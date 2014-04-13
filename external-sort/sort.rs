@@ -1,6 +1,10 @@
 extern crate collections;
 use std::io::{File, Open, Write, TempDir};
+use std::os::args;
+use std::from_str::from_str;
 use collections::priority_queue::PriorityQueue;
+#[cfg(test)]
+use std::io::{ReadWrite, SeekSet};
 
 /*
  * an entry is the number that we read and the file it came from, so after we took
@@ -152,19 +156,75 @@ fn externalSort(mut fdInput: File, size: u64, mut fdOutput: File, memSize: u64) 
 }
 
 fn main() {
-	let input_file_path = &Path::new("input");
+	if args().len() < 4 {
+		fail!("Argument error: <inputFile> <outputFile> <memoryBufferInMB>");
+	}
+	let input_file_path = &Path::new(args()[1]);
 	let size = match input_file_path.stat() {
 		Ok(stat) => stat.size,
 		Err(e) => fail!("Couldn't read {}", e),
 	};
-	println!("Input file size {}", size);
 	let fin = match File::open(input_file_path) {
 		Ok(f) => f,
 		Err(e) => fail!("input file error: {}", e),
 	};
-	let fout = match File::open_mode(&Path::new("output"), Open, Write) {
+	let fout = match File::open_mode(&Path::new(args()[2]), Open, Write) {
 		Ok(f) => f,
 		Err(e) => fail!("output file error: {}", e),
 	};
-	externalSort(fin, size, fout, 800);
+	let buffer_size:u64 = match from_str(args()[3]) {
+		Some(num) => num,
+		None => fail!("Not numeric input"),
+	};
+	println!("Input file size {}", size);
+
+	externalSort(fin, size, fout, buffer_size * 1024 * 1024);
+}
+
+#[test]
+fn generate_5gb_and_sort() {
+	let mut random = match File::open(&Path::new("/dev/urandom")) {
+		Ok(f) => f,
+		Err(e) => fail!("Error opening urandom: {}", e),
+	};
+
+	let test_dir = match TempDir::new("externalsort-test") {
+		Some(temp_dir) => temp_dir,
+		None => fail!("creation of temporary directory"),
+	};
+	let test_path = test_dir.path();
+
+	let mut unordered_nums = match File::open_mode(&test_path.join("input"), Open, ReadWrite) {
+		Ok(f) => f,
+		Err(e) => fail!("output file error: {}", e),
+	};
+
+	let mut buffer = [0, .. 1024*1024];
+	let mut left = 1 * 1024;
+	while left > 0 {
+		random.read(buffer);
+		unordered_nums.write(buffer);
+		left -= 1;
+	}
+
+	unordered_nums.seek(0, SeekSet);
+	let ordered_nums = match File::open_mode(&test_path.join("output"), Open, Write) {
+		Ok(f) => f,
+		Err(e) => fail!("output file error: {}", e),
+	};
+	externalSort(unordered_nums, 1024 * 1024 * 1024 * 1, ordered_nums, 1024 * 1024 * 200);
+	let mut ordered_nums = match File::open(&test_path.join("output")) {
+		Ok(f) => f,
+		Err(e) => fail!("output file error: {}", e),
+	};
+
+	let mut last = 0_u64;
+	loop {
+		let number = match ordered_nums.read_le_u64() {
+			Ok(num) => num,
+			Err(e) => fail!("failed to read u64 from file: {}", e),
+		};
+		assert!(number >= last);
+		last = number;
+	}
 }
