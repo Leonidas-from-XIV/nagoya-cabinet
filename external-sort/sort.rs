@@ -2,27 +2,53 @@ extern crate collections;
 use std::io::{File, Open, Write, TempDir};
 use collections::priority_queue::PriorityQueue;
 
+struct Entry {
+	value: u64,
+	source: File,
+}
+
+impl Ord for Entry {
+	fn lt(&self, other: &Entry) -> bool {
+		!(self.value < other.value)
+	}
+}
+
+impl Eq for Entry {
+	fn eq(&self, other: &Entry) -> bool {
+		self.value == other.value
+	}
+}
+
 struct PriorityFile {
-	files: Vec<File>,
-	queue: ~PriorityQueue<u64>,
+	queue: ~PriorityQueue<Entry>,
 }
 
 impl PriorityFile {
 	pub fn new(mut files: Vec<File>) -> PriorityFile {
-		let mut queue: PriorityQueue<u64> = PriorityQueue::new();
-		for f in files.mut_iter() {
+		let mut queue: PriorityQueue<Entry> = PriorityQueue::new();
+		for mut f in files.move_iter() {
 			let number = match f.read_le_u64() {
 				Ok(num) => num,
 				Err(e) => fail!("failed to read u64 from file: {}", e),
 			};
-			queue.push(number);
+			let entry = Entry {value: number, source: f};
+			queue.push(entry);
 		}
-		PriorityFile {files: files, queue: ~queue}
+		PriorityFile {queue: ~queue}
 	}
 
 	pub fn next(&mut self) -> Option<u64> {
-		let res = self.queue.maybe_pop();
-		res
+		match self.queue.maybe_pop() {
+			Some(mut res) => {
+				let v = res.value;
+				match res.source.read_le_u64() {
+					Ok(num) => self.queue.push(Entry {value: num, source: res.source}),
+					Err(_) => (),
+				};
+				Some(v)
+			},
+			None => None,
+		}
 	}
 }
 
@@ -39,12 +65,13 @@ fn externalSort(mut fdInput: File, size: u64, mut fdOutput: File, memSize: u64) 
 		run.push(0_u64);
 	}
 
-	let overflow_path = match TempDir::new("externalsort") {
-		Some(path) => path,
+	let overflow_dir = match TempDir::new("externalsort") {
+		Some(temp_dir) => temp_dir,
 		None => fail!("creation of temporary directory"),
 	};
+	let overflow_path = overflow_dir.path();
 
-	println!("tdpath {}", overflow_path.path().display());
+	println!("temp dir path {}", overflow_path.display());
 
 	for n in range(0, runs) {
 		for element in run.mut_iter() {
@@ -57,7 +84,7 @@ fn externalSort(mut fdInput: File, size: u64, mut fdOutput: File, memSize: u64) 
 		}
 		run.sort();
 
-		let file_path = overflow_path.path().join(n.to_str());
+		let file_path = overflow_path.join(n.to_str());
 		println!("path: {}", file_path.display());
 		let mut file_file = match File::open_mode(&file_path, Open, Write) {
 			Ok(f) => f,
@@ -74,8 +101,8 @@ fn externalSort(mut fdInput: File, size: u64, mut fdOutput: File, memSize: u64) 
 
 	let mut files = Vec::with_capacity(runs as uint);
 	for n in range(0, runs) {
-		let file_path = overflow_path.path().join(n.to_str());
-		let fd = match File::open(&file_path) {
+		let file_path = overflow_path.join(n.to_str());
+		let mut fd = match File::open(&file_path) {
 			Ok(f) => f,
 			Err(e) => fail!("overflow file open error {}", e),
 		};
