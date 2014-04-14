@@ -1,12 +1,13 @@
-#[feature(phase)];
+#![feature(phase)]
 #[phase(syntax, link)] extern crate log;
 extern crate collections;
 use std::io::{File, Open, Write, TempDir};
 use std::os::args;
 use std::cast;
-use std::from_str::from_str;
 use std::raw::Slice;
 use collections::priority_queue::PriorityQueue;
+#[cfg(not(test))]
+use std::from_str::from_str;
 #[cfg(test)]
 use std::io::{ReadWrite, SeekSet};
 
@@ -200,6 +201,7 @@ fn externalSort(mut fdInput: File, size: u64, mut fdOutput: File, memSize: u64) 
 				if write_cache.len() >= items_per_run {
 					info!("Writing out {} elements from cache", write_cache.len());
 					write_u64(&mut fdOutput, &write_cache);
+					info!("Write done");
 					write_cache.clear();
 				};
 			},
@@ -207,12 +209,14 @@ fn externalSort(mut fdInput: File, size: u64, mut fdOutput: File, memSize: u64) 
 				info!("Ending, writing out remaining {} elements from cache", write_cache.len());
 				// we finished, write remaining cache to disk
 				write_u64(&mut fdOutput, &write_cache);
+				info!("Write done");
 				break;
 			},
 		};
 	};
 }
 
+#[cfg(not(test))]
 fn main() {
 	if args().len() < 4 {
 		fail!("Argument error: <inputFile> <outputFile> <memoryBufferInMB>");
@@ -236,13 +240,13 @@ fn main() {
 	};
 	info!("Input file size {}", size);
 
-	//let values = read_u64(&mut fin, 2);
-	//println!("Values: {}", values);
 	externalSort(fin, size, fout, buffer_size * 1024 * 1024);
 }
 
 #[test]
 fn generate_5gb_and_sort() {
+	let number_gigabytes = 1;
+
 	let mut random = match File::open(&Path::new("/dev/urandom")) {
 		Ok(f) => f,
 		Err(e) => fail!("Error opening urandom: {}", e),
@@ -260,19 +264,29 @@ fn generate_5gb_and_sort() {
 	};
 
 	let mut buffer = [0, .. 1024*1024];
-	let mut left = 1 * 1024;
+	let mut left = number_gigabytes * 1024;
 	while left > 0 {
-		random.read(buffer);
-		unordered_nums.write(buffer);
+		match random.read(buffer) {
+			Ok(_) => match unordered_nums.write(buffer) {
+				Ok(_) => (),
+				Err(e) => fail!("failed writing random numbers {}", e),
+			},
+			Err(e) => fail!("failed reading random numbers {}", e),
+		};
 		left -= 1;
 	}
 
-	unordered_nums.seek(0, SeekSet);
+	match unordered_nums.seek(0, SeekSet) {
+		Ok(_) => (),
+		Err(e) => fail!("Failed to seek: {}", e),
+	};
+
 	let ordered_nums = match File::open_mode(&test_path.join("output"), Open, Write) {
 		Ok(f) => f,
 		Err(e) => fail!("output file error: {}", e),
 	};
-	externalSort(unordered_nums, 1024 * 1024 * 1024 * 1, ordered_nums, 1024 * 1024 * 200);
+
+	externalSort(unordered_nums, 1024 * 1024 * 1024 * number_gigabytes, ordered_nums, 1024 * 1024 * 100);
 	let mut ordered_nums = match File::open(&test_path.join("output")) {
 		Ok(f) => f,
 		Err(e) => fail!("output file error: {}", e),
