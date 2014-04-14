@@ -9,7 +9,7 @@ use collections::priority_queue::PriorityQueue;
 #[cfg(not(test))]
 use std::from_str::from_str;
 #[cfg(test)]
-use std::io::{ReadWrite, SeekSet};
+use std::io::{ReadWrite, SeekSet, EndOfFile};
 
 /*
  * an entry is the number that we read and the file it came from, so after we took
@@ -218,10 +218,11 @@ fn externalSort(mut fdInput: File, size: u64, mut fdOutput: File, memSize: u64) 
 
 #[cfg(not(test))]
 fn main() {
-	if args().len() < 4 {
+	let argv = args();
+	if argv.len() < 4 {
 		fail!("Argument error: <inputFile> <outputFile> <memoryBufferInMB>");
 	}
-	let input_file_path = &Path::new(args()[1]);
+	let input_file_path = &Path::new(argv[1].clone());
 	let size = match input_file_path.stat() {
 		Ok(stat) => stat.size,
 		Err(e) => fail!("Couldn't read {}", e),
@@ -230,11 +231,11 @@ fn main() {
 		Ok(f) => f,
 		Err(e) => fail!("input file error: {}", e),
 	};
-	let fout = match File::open_mode(&Path::new(args()[2]), Open, Write) {
+	let fout = match File::open_mode(&Path::new(argv[2].clone()), Open, Write) {
 		Ok(f) => f,
 		Err(e) => fail!("output file error: {}", e),
 	};
-	let buffer_size:u64 = match from_str(args()[3]) {
+	let buffer_size:u64 = match from_str(args()[3].clone()) {
 		Some(num) => num,
 		None => fail!("Not numeric input"),
 	};
@@ -296,7 +297,12 @@ fn generate_5gb_and_sort() {
 	loop {
 		let number = match ordered_nums.read_le_u64() {
 			Ok(num) => num,
-			Err(e) => fail!("failed to read u64 from file: {}", e),
+			Err(e) => {
+				match e.kind {
+					EndOfFile => break,
+					_ => fail!("Error reading from file: {}", e),
+				}
+			}
 		};
 		assert!(number >= last);
 		last = number;
