@@ -75,10 +75,14 @@ impl PriorityFile {
 }
 
 fn externalSort(mut fdInput: File, size: u64, mut fdOutput: File, memSize: u64) {
-	let runs = size / memSize;
+	let mut runs = size / memSize;
 	let items_per_run = (memSize / 8) as uint;
+	let over = ((size / 8) - (items_per_run as u64 * runs)) as uint;
 
 	println!("There will be {} runs with {} elements each.", runs, items_per_run);
+	if over > 0 {
+		println!("And one additional run with {} items.", over);
+	}
 
 	/* initialize a Vector. Rust Vectors grow but this one will stay fixed */
 	let mut run: Vec<u64> = Vec::with_capacity(items_per_run);
@@ -108,7 +112,7 @@ fn externalSort(mut fdInput: File, size: u64, mut fdOutput: File, memSize: u64) 
 				Err(e) => fail!("failed to read u64 from file: {}", e),
 			};
 			*element = number;
-		}
+		};
 		// O(n log n) sort from the stdlib, hopefully more or less equivalent to
 		// C++ std::sort
 		run.sort();
@@ -126,6 +130,32 @@ fn externalSort(mut fdInput: File, size: u64, mut fdOutput: File, memSize: u64) 
 				Err(e) => fail!("writing overflow failed: {}", e),
 			};
 		};
+	};
+
+	/* additional run to catch remaining objects */
+	if over > 0 {
+		let mut run: Vec<u64> = Vec::with_capacity(over);
+		for _ in range(0, over) {
+			let number = match fdInput.read_le_u64() {
+				Ok(num) => num,
+				Err(e) => fail!("failed to read u64 from file: {}", e),
+			};
+			run.push(number);
+		}
+		run.sort();
+		let file_path = overflow_path.join(runs.to_str());
+		let mut file_file = match File::open_mode(&file_path, Open, Write) {
+			Ok(f) => f,
+			Err(e) => fail!("overflow file failed opening for write: {}", e),
+		};
+
+		for &element in run.iter() {
+			match file_file.write_le_u64(element) {
+				Ok (_) => (),
+				Err(e) => fail!("writing overflow failed: {}", e),
+			};
+		};
+		runs += 1;
 	};
 
 	/* sorting done, now merging */
