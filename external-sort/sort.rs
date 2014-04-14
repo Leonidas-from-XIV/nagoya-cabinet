@@ -222,7 +222,7 @@ fn main() {
 	if argv.len() < 4 {
 		fail!("Argument error: <inputFile> <outputFile> <memoryBufferInMB>");
 	}
-	let input_file_path = &Path::new(argv[1].clone());
+	let input_file_path = &Path::new(argv[1].as_slice());
 	let size = match input_file_path.stat() {
 		Ok(stat) => stat.size,
 		Err(e) => fail!("Couldn't read {}", e),
@@ -231,11 +231,11 @@ fn main() {
 		Ok(f) => f,
 		Err(e) => fail!("input file error: {}", e),
 	};
-	let fout = match File::open_mode(&Path::new(argv[2].clone()), Open, Write) {
+	let fout = match File::open_mode(&Path::new(argv[2].as_slice()), Open, Write) {
 		Ok(f) => f,
 		Err(e) => fail!("output file error: {}", e),
 	};
-	let buffer_size:u64 = match from_str(args()[3].clone()) {
+	let buffer_size:u64 = match from_str(args()[3].as_slice()) {
 		Some(num) => num,
 		None => fail!("Not numeric input"),
 	};
