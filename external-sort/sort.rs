@@ -74,7 +74,7 @@ impl PriorityFile {
 	}
 }
 
-fn read_u64(mut from: File, n: uint) -> ~Vec<u64> {
+fn read_u64(from: &mut File, n: uint) -> Vec<u64> {
 	// rust post 0.10 will directly return a Vec<u8> here
 	let mut buf: ~[u8] = match from.read_exact(n*8) {
 		Ok(b) => b,
@@ -82,23 +82,20 @@ fn read_u64(mut from: File, n: uint) -> ~Vec<u64> {
 	};
 	let mut buffer = Vec::from_slice(buf);
 
-/*
-	let mut buffer: Vec<u8> = Vec::from_elem(n*8, 0u8);
-
-	{
-		let mut buf = buffer.as_mut_slice();
-		println!("slice len {}", buf.len());
-		match from.read(buf) {
-			Ok(_) => (),
-			Err(e) => fail!("reading failed {}", e),
-		};
-	};
-*/
-
-	let mut read: ~Vec<u64> = ~unsafe { std::cast::transmute(buffer) };
+	let mut read: Vec<u64> = unsafe { std::cast::transmute(buffer) };
 	let read_len = read.len();
 	unsafe { read.set_len(read_len / 8); };
 	read
+}
+
+fn write_u64(to: &mut File, items: Vec<u64>) {
+	let mut written: Vec<u8> = unsafe { std::cast::transmute(items) };
+	let written_len = written.len();
+	unsafe { written.set_len(written_len * 8)};
+	match to.write(written.as_slice()) {
+		Ok(_) => (),
+		Err(e) => fail!("writing failed: {}", e),
+	};
 }
 
 fn externalSort(mut fdInput: File, size: u64, mut fdOutput: File, memSize: u64) {
@@ -110,9 +107,6 @@ fn externalSort(mut fdInput: File, size: u64, mut fdOutput: File, memSize: u64) 
 	if over > 0 {
 		println!("And one additional run with {} items.", over);
 	}
-
-	/* initialize a Vector. Rust Vectors grow but this one will stay fixed */
-	let mut run: Vec<u64> = Vec::from_elem(items_per_run, 0_u64);
 
 	// let's create a temporary directory to store the sorted chunks
 	// neat: TempDir deletes the directory and its contents when it goes out of
@@ -129,13 +123,9 @@ fn externalSort(mut fdInput: File, size: u64, mut fdOutput: File, memSize: u64) 
 		// iterate over our 'run' buffer and read from the input file
 		// I suppose the values are little endian, which considering we are most
 		// likely on x86, is a reasonable assumption
-		for element in run.mut_iter() {
-			let number = match fdInput.read_le_u64() {
-				Ok(num) => num,
-				Err(e) => fail!("failed to read u64 from file: {}", e),
-			};
-			*element = number;
-		};
+		println!("Starting read");
+		let mut run = read_u64(&mut fdInput, items_per_run);
+		println!("Read finished");
 		// O(n log n) sort from the stdlib, hopefully more or less equivalent to
 		// C++ std::sort
 		run.sort();
@@ -147,12 +137,9 @@ fn externalSort(mut fdInput: File, size: u64, mut fdOutput: File, memSize: u64) 
 			Err(e) => fail!("overflow file failed opening for write: {}", e),
 		};
 
-		for &element in run.iter() {
-			match file_file.write_le_u64(element) {
-				Ok (_) => (),
-				Err(e) => fail!("writing overflow failed: {}", e),
-			};
-		};
+		println!("Starting write");
+		write_u64(&mut file_file, run);
+		println!("Write finished");
 	};
 
 	/* additional run to catch remaining objects */
@@ -231,9 +218,9 @@ fn main() {
 	};
 	println!("Input file size {}", size);
 
-	let values = read_u64(fin, 2);
-	println!("Values: {}", values);
-	//externalSort(fin, size, fout, buffer_size * 1024 * 1024);
+	//let values = read_u64(&mut fin, 2);
+	//println!("Values: {}", values);
+	externalSort(fin, size, fout, buffer_size * 1024 * 1024);
 }
 
 #[test]
