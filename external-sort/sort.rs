@@ -1,8 +1,11 @@
+#[feature(phase)];
+#[phase(syntax, link)] extern crate log;
 extern crate collections;
 use std::io::{File, Open, Write, TempDir};
 use std::os::args;
 use std::cast;
 use std::from_str::from_str;
+use std::raw::Slice;
 use collections::priority_queue::PriorityQueue;
 #[cfg(test)]
 use std::io::{ReadWrite, SeekSet};
@@ -77,23 +80,26 @@ impl PriorityFile {
 
 fn read_u64(from: &mut File, n: uint) -> Vec<u64> {
 	// rust post 0.10 will directly return a Vec<u8> here
-	let mut buf: ~[u8] = match from.read_exact(n*8) {
+	let buf = match from.read_exact(n*8) {
 		Ok(b) => b,
 		Err(e) => fail!("reading failed {}", e),
 	};
-	let mut buffer = Vec::from_slice(buf);
+	//let u = buf.as_ptr();
+	let u = buf.as_slice();
 
-	let mut read: Vec<u64> = unsafe { cast::transmute(buffer) };
-	let read_len = read.len();
-	unsafe { read.set_len(read_len / 8); };
-	read
+	let mut r: Slice<u64> = unsafe { cast::transmute(u) };
+	assert_eq!(r.len % 8, 0);
+	r.len /= 8;
+	Vec::from_slice(unsafe { cast::transmute(r) })
 }
 
-fn write_u64(to: &mut File, items: Vec<u64>) {
-	let mut written: Vec<u8> = unsafe { cast::transmute(items) };
-	let written_len = written.len();
-	unsafe { written.set_len(written_len * 8)};
-	match to.write(written.as_slice()) {
+fn write_u64(to: &mut File, items: &Vec<u64>) {
+	let s = items.as_slice();
+	let mut r: Slice<u8> = unsafe { cast::transmute(s) };
+	r.len *= 8;
+	let buf: &[u8] = unsafe { cast::transmute(r) };
+
+	match to.write(buf) {
 		Ok(_) => (),
 		Err(e) => fail!("writing failed: {}", e),
 	};
@@ -104,9 +110,9 @@ fn externalSort(mut fdInput: File, size: u64, mut fdOutput: File, memSize: u64) 
 	let items_per_run = (memSize / 8) as uint;
 	let over = ((size / 8) - (items_per_run as u64 * runs)) as uint;
 
-	println!("There will be {} runs with {} elements each.", runs, items_per_run);
+	info!("There will be {} runs with {} elements each.", runs, items_per_run);
 	if over > 0 {
-		println!("And one additional run with {} items.", over);
+		info!("And one additional run with {} items.", over);
 	}
 
 	// let's create a temporary directory to store the sorted chunks
@@ -117,16 +123,16 @@ fn externalSort(mut fdInput: File, size: u64, mut fdOutput: File, memSize: u64) 
 		None => fail!("creation of temporary directory"),
 	};
 	let overflow_path = overflow_dir.path();
-	println!("temp dir path {}", overflow_path.display());
+	info!("temp dir:\ncd {}", overflow_path.display());
 
 	// start the sorting runs
 	for n in range(0, runs) {
 		// iterate over our 'run' buffer and read from the input file
 		// I suppose the values are little endian, which considering we are most
 		// likely on x86, is a reasonable assumption
-		println!("Starting read");
+		info!("Run {}, starting read", n);
 		let mut run = read_u64(&mut fdInput, items_per_run);
-		println!("Read finished");
+		info!("Run {}, read finished", n);
 		// O(n log n) sort from the stdlib, hopefully more or less equivalent to
 		// C++ std::sort
 		run.sort();
@@ -139,23 +145,29 @@ fn externalSort(mut fdInput: File, size: u64, mut fdOutput: File, memSize: u64) 
 		};
 
 		println!("Starting write");
-		write_u64(&mut file_file, run);
+		write_u64(&mut file_file, &run);
 		println!("Write finished");
 	};
 
 	/* additional run to catch remaining objects */
 	if over > 0 {
+		println!("overrun read start");
 		let mut run = read_u64(&mut fdInput, over);
+		println!("overrun read done");
 		run.sort();
+
 		let file_path = overflow_path.join(runs.to_str());
 		let mut file_file = match File::open_mode(&file_path, Open, Write) {
 			Ok(f) => f,
 			Err(e) => fail!("overflow file failed opening for write: {}", e),
 		};
-		write_u64(&mut file_file, run);
+		println!("overrun write start");
+		write_u64(&mut file_file, &run);
+		println!("overrun write done");
 
 		runs += 1;
 	};
+	println!("remaining run and sort done")
 
 	/* sorting done, now merging */
 
@@ -172,14 +184,24 @@ fn externalSort(mut fdInput: File, size: u64, mut fdOutput: File, memSize: u64) 
 
 	// we got a nice class here that spits out sorted numbers until exhausted
 	let mut pf = PriorityFile::new(files);
+	// put the sorted numbers in a cache first, so they can all be written in bulk
+	let mut write_cache = Vec::with_capacity(items_per_run);
 	loop {
 		match pf.next() {
-			// if we got a number, write it to the output
-			Some (number) => match fdOutput.write_le_u64(number) {
-				Ok(_) => (),
-				Err(e) => fail!("writing output file failed: {}", e),
+			Some (number) => {
+				// a new number was found, add it to the cache
+				// and if the cache is full, write that to disk
+				write_cache.push(number);
+				if write_cache.len() >= items_per_run {
+					write_u64(&mut fdOutput, &write_cache);
+					write_cache.clear();
+				};
 			},
-			None => break,
+			None => {
+				// we finished, write remaining cache to disk
+				write_u64(&mut fdOutput, &write_cache);
+				break;
+			},
 		};
 	};
 }
@@ -205,7 +227,7 @@ fn main() {
 		Some(num) => num,
 		None => fail!("Not numeric input"),
 	};
-	println!("Input file size {}", size);
+	info!("Input file size {}", size);
 
 	//let values = read_u64(&mut fin, 2);
 	//println!("Values: {}", values);
