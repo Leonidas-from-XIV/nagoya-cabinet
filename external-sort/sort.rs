@@ -74,6 +74,27 @@ impl PriorityFile {
 	}
 }
 
+fn read_u64(mut from: File, n: uint) -> Vec<u64> {
+	let mut buffer: Vec<u8> = Vec::with_capacity(n * 8);
+	for _ in range(0, n*8) {
+		buffer.push(0);
+	};
+
+	{
+		let mut buf = buffer.as_mut_slice();
+		println!("slice len {}", buf.len());
+		match from.read(buf) {
+			Ok(_) => (),
+			Err(e) => fail!("reading failed {}", e),
+		};
+	};
+
+	let mut read: Vec<u64> = unsafe { std::cast::transmute(buffer) };
+	let read_len = read.len();
+	unsafe { read.set_len(read_len / 8); };
+	read
+}
+
 fn externalSort(mut fdInput: File, size: u64, mut fdOutput: File, memSize: u64) {
 	let runs = size / memSize;
 	let items_per_run = (memSize / 8) as uint;
@@ -178,6 +199,8 @@ fn main() {
 	};
 	println!("Input file size {}", size);
 
+	//let values = read_u64(fin, 2);
+	//println!("Values: {}", values);
 	externalSort(fin, size, fout, buffer_size * 1024 * 1024);
 }
 
