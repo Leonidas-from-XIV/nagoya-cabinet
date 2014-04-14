@@ -74,6 +74,33 @@ impl PriorityFile {
 	}
 }
 
+fn read_u64(mut from: File, n: uint) -> ~Vec<u64> {
+	// rust post 0.10 will directly return a Vec<u8> here
+	let mut buf: ~[u8] = match from.read_exact(n*8) {
+		Ok(b) => b,
+		Err(e) => fail!("reading failed {}", e),
+	};
+	let mut buffer = Vec::from_slice(buf);
+
+/*
+	let mut buffer: Vec<u8> = Vec::from_elem(n*8, 0u8);
+
+	{
+		let mut buf = buffer.as_mut_slice();
+		println!("slice len {}", buf.len());
+		match from.read(buf) {
+			Ok(_) => (),
+			Err(e) => fail!("reading failed {}", e),
+		};
+	};
+*/
+
+	let mut read: ~Vec<u64> = ~unsafe { std::cast::transmute(buffer) };
+	let read_len = read.len();
+	unsafe { read.set_len(read_len / 8); };
+	read
+}
+
 fn externalSort(mut fdInput: File, size: u64, mut fdOutput: File, memSize: u64) {
 	let mut runs = size / memSize;
 	let items_per_run = (memSize / 8) as uint;
@@ -85,11 +112,7 @@ fn externalSort(mut fdInput: File, size: u64, mut fdOutput: File, memSize: u64) 
 	}
 
 	/* initialize a Vector. Rust Vectors grow but this one will stay fixed */
-	let mut run: Vec<u64> = Vec::with_capacity(items_per_run);
-	// preallocate it with zeroes
-	for _ in range(0, items_per_run) {
-		run.push(0_u64);
-	}
+	let mut run: Vec<u64> = Vec::from_elem(items_per_run, 0_u64);
 
 	// let's create a temporary directory to store the sorted chunks
 	// neat: TempDir deletes the directory and its contents when it goes out of
@@ -208,7 +231,9 @@ fn main() {
 	};
 	println!("Input file size {}", size);
 
-	externalSort(fin, size, fout, buffer_size * 1024 * 1024);
+	let values = read_u64(fin, 2);
+	println!("Values: {}", values);
+	//externalSort(fin, size, fout, buffer_size * 1024 * 1024);
 }
 
 #[test]
