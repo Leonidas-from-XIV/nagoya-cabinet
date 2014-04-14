@@ -246,7 +246,7 @@ fn main() {
 
 #[test]
 fn generate_5gb_and_sort() {
-	let number_gigabytes = 1;
+	let number_gigabytes = 5;
 
 	let mut random = match File::open(&Path::new("/dev/urandom")) {
 		Ok(f) => f,

@@ -27,12 +27,14 @@ cd external-sort
 # start with the binary
 rustc sort.rs
 # run sort
-./sort input output blockSizeInMb
-# need debug/info output?
+./sort inputFile outputFile memoryBufferInMB
+# need debug/info output? debug prints *every single number*, takes forever
 RUST_LOG=info ./sort …
 RUST_LOG=debug ./sort …
 # here's how to build the unit test
 rustc --test sort.rs
 # run unit test
 ./sort
+# this test generates random data, sorts in 100MB chunks, merges the chunks
+# and verifies that the result is ordered.
 ```
