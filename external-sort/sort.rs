@@ -1,6 +1,7 @@
 extern crate collections;
 use std::io::{File, Open, Write, TempDir};
 use std::os::args;
+use std::cast;
 use std::from_str::from_str;
 use collections::priority_queue::PriorityQueue;
 #[cfg(test)]
@@ -82,14 +83,14 @@ fn read_u64(from: &mut File, n: uint) -> Vec<u64> {
 	};
 	let mut buffer = Vec::from_slice(buf);
 
-	let mut read: Vec<u64> = unsafe { std::cast::transmute(buffer) };
+	let mut read: Vec<u64> = unsafe { cast::transmute(buffer) };
 	let read_len = read.len();
 	unsafe { read.set_len(read_len / 8); };
 	read
 }
 
 fn write_u64(to: &mut File, items: Vec<u64>) {
-	let mut written: Vec<u8> = unsafe { std::cast::transmute(items) };
+	let mut written: Vec<u8> = unsafe { cast::transmute(items) };
 	let written_len = written.len();
 	unsafe { written.set_len(written_len * 8)};
 	match to.write(written.as_slice()) {
@@ -144,27 +145,15 @@ fn externalSort(mut fdInput: File, size: u64, mut fdOutput: File, memSize: u64) 
 
 	/* additional run to catch remaining objects */
 	if over > 0 {
-		let mut run: Vec<u64> = Vec::with_capacity(over);
-		for _ in range(0, over) {
-			let number = match fdInput.read_le_u64() {
-				Ok(num) => num,
-				Err(e) => fail!("failed to read u64 from file: {}", e),
-			};
-			run.push(number);
-		}
+		let mut run = read_u64(&mut fdInput, over);
 		run.sort();
 		let file_path = overflow_path.join(runs.to_str());
 		let mut file_file = match File::open_mode(&file_path, Open, Write) {
 			Ok(f) => f,
 			Err(e) => fail!("overflow file failed opening for write: {}", e),
 		};
+		write_u64(&mut file_file, run);
 
-		for &element in run.iter() {
-			match file_file.write_le_u64(element) {
-				Ok (_) => (),
-				Err(e) => fail!("writing overflow failed: {}", e),
-			};
-		};
 		runs += 1;
 	};
 
