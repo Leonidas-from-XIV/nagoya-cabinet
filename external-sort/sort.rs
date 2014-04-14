@@ -135,7 +135,9 @@ fn externalSort(mut fdInput: File, size: u64, mut fdOutput: File, memSize: u64) 
 		info!("Run {}, read finished", n);
 		// O(n log n) sort from the stdlib, hopefully more or less equivalent to
 		// C++ std::sort
+		info!("Run {}, starting sort", n);
 		run.sort();
+		info!("Run {}, sort finished", n);
 
 		// now write out the results into numbered files
 		let file_path = overflow_path.join(n.to_str());
@@ -144,32 +146,34 @@ fn externalSort(mut fdInput: File, size: u64, mut fdOutput: File, memSize: u64) 
 			Err(e) => fail!("overflow file failed opening for write: {}", e),
 		};
 
-		println!("Starting write");
+		info!("Run {}, starting write", n);
 		write_u64(&mut file_file, &run);
-		println!("Write finished");
+		info!("Run {}, write finished", n);
 	};
 
 	/* additional run to catch remaining objects */
 	if over > 0 {
-		println!("overrun read start");
+		info!("overrun starting read");
 		let mut run = read_u64(&mut fdInput, over);
-		println!("overrun read done");
+		info!("overrun read finished");
+		info!("overrun starting sort");
 		run.sort();
+		info!("overrun sort finished");
 
 		let file_path = overflow_path.join(runs.to_str());
 		let mut file_file = match File::open_mode(&file_path, Open, Write) {
 			Ok(f) => f,
 			Err(e) => fail!("overflow file failed opening for write: {}", e),
 		};
-		println!("overrun write start");
+		info!("overrun starting write");
 		write_u64(&mut file_file, &run);
-		println!("overrun write done");
+		info!("overrun finished write");
 
 		runs += 1;
 	};
-	println!("remaining run and sort done")
 
 	/* sorting done, now merging */
+	info!("Pre-sorting done, now k-way merge")
 
 	// collect all file handles. Hopefully less than 4096
 	let mut files = Vec::with_capacity(runs as uint);
@@ -192,12 +196,15 @@ fn externalSort(mut fdInput: File, size: u64, mut fdOutput: File, memSize: u64) 
 				// a new number was found, add it to the cache
 				// and if the cache is full, write that to disk
 				write_cache.push(number);
+				debug!("Gathered element {}", number);
 				if write_cache.len() >= items_per_run {
+					info!("Writing out {} elements from cache", write_cache.len());
 					write_u64(&mut fdOutput, &write_cache);
 					write_cache.clear();
 				};
 			},
 			None => {
+				info!("Ending, writing out remaining {} elements from cache", write_cache.len());
 				// we finished, write remaining cache to disk
 				write_u64(&mut fdOutput, &write_cache);
 				break;
