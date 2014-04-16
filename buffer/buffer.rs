@@ -1,10 +1,17 @@
-struct BufferManager;
+extern crate collections;
+use collections::HashMap;
+
+struct BufferManager {
+	size: uint,
+	frames: HashMap<u64, BufferFrame>,
+}
 
 struct BufferFrame;
 
 impl BufferManager {
 	pub fn new(size: uint) -> BufferManager {
-		BufferManager
+		let h = HashMap::with_capacity(size);
+		BufferManager {size: size, frames: h}
 	}
 	
 	pub fn fixPage(pageId: u64, exclusive: bool) -> Option<BufferFrame> {
