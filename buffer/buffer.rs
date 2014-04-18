@@ -1,14 +1,26 @@
 extern crate collections;
 use collections::HashMap;
 
-struct BufferManager {
-	size: uint,
-	frames: HashMap<u64, BufferFrame>,
+enum State {
+	Clean,
+	Dirty
 }
 
-struct BufferFrame;
+struct BufferManager<'a> {
+	size: uint,
+	frames: HashMap<u64, BufferEntry<'a>>,
+}
 
-impl BufferManager {
+struct BufferEntry<'a> {
+	state: State,
+	frame: BufferFrame<'a>,
+}
+
+struct BufferFrame<'a> {
+	data: &'a mut [u8],
+}
+
+impl<'a> BufferManager<'a> {
 	pub fn new(size: uint) -> BufferManager {
 		let h = HashMap::with_capacity(size);
 		BufferManager {size: size, frames: h}
@@ -22,7 +34,7 @@ impl BufferManager {
 	}
 }
 
-impl BufferFrame {
+impl<'a> BufferFrame<'a> {
 	pub fn getData() -> ~[u8] {
 		~[0_u8, ..1024]
 	}
