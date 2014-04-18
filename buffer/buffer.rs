@@ -35,7 +35,7 @@ impl BufferManager {
 	fn openOrCreate(&self, pageId: u64) -> File {
 		let page_path = self.directory.path();
 		let file_path = page_path.join(pageId.to_str());
-		let mut file_handle = match File::open_mode(&file_path, Open, Read) {
+		match File::open_mode(&file_path, Open, Read) {
 			Ok(f) => f,
 			Err(e) => {
 				match File::open_mode(&file_path, Open, Write) {
@@ -49,8 +49,7 @@ impl BufferManager {
 					Err(e) => fail!("Writing file failed: {}", e),
 				}
 			},
-		};
-		file_handle
+		}
 	}
 
 	fn loadPage(&mut self, pageId: u64) {
@@ -86,7 +85,14 @@ impl BufferManager {
 	}
 }
 
+/*
+ * A buffer frame, the unit that gets the data
+ */
 impl BufferFrame {
+	/*
+	 * getData returns a borrowed reference to a mutable slice to the vector
+	 * contents.
+	 */
 	pub fn getData<'a>(&'a mut self) -> &'a mut [u8] {
 		self.data.as_mut_slice()
 	}
