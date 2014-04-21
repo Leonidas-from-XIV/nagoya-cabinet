@@ -1,11 +1,8 @@
 extern crate collections;
+extern crate sync;
 use collections::HashMap;
 use std::io::{File, Open, Read, Write, TempDir};
-
-enum State {
-	Available,
-	Exclusive,
-}
+use sync::{Arc, RWLock};
 
 struct BufferManager {
 	size: uint,
@@ -14,18 +11,26 @@ struct BufferManager {
 }
 
 struct BufferEntry {
-	state: State,
-	frame: BufferFrame,
+	frame: Arc<RWLock<BufferFrame>>,
 }
 
 struct BufferFrame {
+	pageId: u64,
 	data: Vec<u8>,
+}
+
+/* Destructor trait implementation */
+impl Drop for BufferManager {
+	fn drop(&mut self) {
+		println!("Dropping");
+		// TODO
+	}
 }
 
 impl BufferManager {
 	pub fn new(size: uint) -> BufferManager {
 		let h = HashMap::with_capacity(size);
-		let dir = match TempDir::new("externalsort") {
+		let dir = match TempDir::new("buffermanager") {
 			Some(temp_dir) => temp_dir,
 			None => fail!("creation of temporary directory"),
 		};
@@ -57,17 +62,14 @@ impl BufferManager {
 			self.evictPage();
 		}
 
-		// TODO: open file, load page
 		let mut file_handle = self.openOrCreate(pageId);
-		let buffer = [0_u8, ..4*1024];
-
 		let content = match file_handle.read_exact(4*1024) {
 			Ok(c) => Vec::from_slice(c),
 			Err(e) => fail!("Couldn't read from page: {}", e),
 		};
 
-		let frame = BufferFrame {data: content};
-		let entry = BufferEntry {state: Available, frame: frame};
+		let frame = BufferFrame {data: content, pageId: pageId};
+		let entry = BufferEntry {frame: Arc::new(RWLock::new(frame))};
 		self.entries.insert(pageId, entry);
 	}
 
@@ -75,13 +77,27 @@ impl BufferManager {
 		// TODO delete a random page
 	}
 	
-	pub fn fixPage(pageId: u64, exclusive: bool) -> Option<BufferFrame> {
+	pub fn fixPage(&mut self, pageId: u64, exclusive: bool) -> Option<Arc<RWLock<BufferFrame>>> {
 		// TODO
-		None
+		if !self.entries.contains_key(&pageId) {
+			self.loadPage(pageId);
+		}
+		let entry = self.entries.get(&pageId);
+		// Arcs can be cloned and they will all point to the same RWLock
+		Some(entry.frame.clone())
 	}
 
-	pub fn unfixPage(frame: BufferFrame, isDirty: bool) {
-		// TODO
+	pub fn unfixPage(&mut self, frame: Arc<RWLock<BufferFrame>>, isDirty: bool) {
+		if !isDirty {
+			return;
+		}
+		let frame = frame.read();
+		self.writePage(frame.pageId, frame.get_data());
+	}
+
+	fn writePage(&mut self, pageId: u64, data: &[u8]) {
+		// TODO: write page back to disk
+		println!("Writing {}", data);
 	}
 }
 
@@ -90,14 +106,18 @@ impl BufferManager {
  */
 impl BufferFrame {
 	/*
-	 * getData returns a borrowed reference to a mutable slice to the vector
+	 * get_mut_data returns a borrowed reference to a mutable slice to the vector
 	 * contents.
 	 */
-	pub fn getData<'a>(&'a mut self) -> &'a mut [u8] {
+	pub fn get_mut_data<'a>(&'a mut self) -> &'a mut [u8] {
 		self.data.as_mut_slice()
+	}
+	pub fn get_data<'a>(&'a self) -> &'a [u8] {
+		self.data.as_slice()
 	}
 }
 
-fn main() {
-	println!("Rewrite me into a test");
+#[test]
+fn test_create() {
+	let _ = BufferManager::new(16);
 }
