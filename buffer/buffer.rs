@@ -3,6 +3,8 @@ extern crate sync;
 use collections::HashMap;
 use std::io::{File, Open, Read, Write, TempDir};
 use sync::{Arc, RWLock};
+#[cfg(test)]
+use std::task::spawn;
 
 struct BufferManager {
 	size: uint,
@@ -48,7 +50,7 @@ impl BufferManager {
 						f.write([0_u8, ..4 * 1024]);
 						match File::open_mode(&file_path, Open, Read) {
 							Ok(f) => f,
-							Err(e) => fail!("failed reading file: {}, e"),
+							Err(e) => fail!("failed reading file: {}", e),
 						}
 					},
 					Err(e) => fail!("Writing file failed: {}", e),
@@ -75,6 +77,7 @@ impl BufferManager {
 
 	fn evictPage(&mut self) {
 		// TODO delete a random page
+		// evicting is hard, let's go shopping
 	}
 	
 	pub fn fixPage(&mut self, pageId: u64, exclusive: bool) -> Option<Arc<RWLock<BufferFrame>>> {
@@ -119,5 +122,31 @@ impl BufferFrame {
 
 #[test]
 fn test_create() {
-	let _ = BufferManager::new(16);
+	let mut bm = BufferManager::new(16);
+	let pageref = match bm.fixPage(42, false) {
+		Some(p) => p,
+		None => fail!("Getting page failed"),
+	};
+	{
+		let mut page = pageref.write();
+		let mut data = page.get_mut_data();
+		data[0] = 42;
+		println!("data: {}", Vec::from_slice(data));
+	}
+	bm.unfixPage(pageref, true);
+	fail!("always");
+}
+
+#[test]
+fn test_threads() {
+	let pages_in_ram = 20;
+	let pages_on_disk = 20;
+	let thread_count = 10;
+	let mut bm = BufferManager::new(pages_in_ram);
+
+	for _ in range(0, thread_count) {
+		spawn(proc() {
+			println!("I'm a new task");
+		})
+	}
 }
