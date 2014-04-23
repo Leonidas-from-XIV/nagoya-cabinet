@@ -1,10 +1,18 @@
 extern crate collections;
 extern crate sync;
+#[cfg(test)]
+extern crate rand;
 use collections::HashMap;
 use std::io::{File, Open, Read, Write, TempDir};
 use sync::{Arc, RWLock};
 #[cfg(test)]
 use std::task::spawn;
+#[cfg(test)]
+use rand::random;
+#[cfg(test)]
+use rand::task_rng;
+#[cfg(test)]
+use rand::distributions::{IndependentSample, Range};
 
 struct BufferManager {
 	size: uint,
@@ -129,7 +137,7 @@ fn test_create() {
 	};
 	{
 		let mut page = pageref.write();
-		let mut data = page.get_mut_data();
+		let data = page.get_mut_data();
 		data[0] = 42;
 		println!("data: {}", Vec::from_slice(data));
 	}
@@ -140,13 +148,52 @@ fn test_create() {
 #[test]
 fn test_threads() {
 	let pages_in_ram = 20;
-	let pages_on_disk = 20;
+	let pages_on_disk: u64 = 20;
 	let thread_count = 10;
-	let mut bm = BufferManager::new(pages_in_ram);
+	let mut buffermanager = BufferManager::new(pages_in_ram);
 
+	for i in range(0, pages_on_disk) {
+		let bf = match buffermanager.fixPage(i, true) {
+			Some(frame) => frame,
+			None => fail!("Couldn't fix page {}", i),
+		};
+		{
+			let mut lock = bf.write();
+			lock.get_mut_data()[0] = 0;
+		}
+		buffermanager.unfixPage(bf, true);
+	}
+	let bm = Arc::new(RWLock::new(buffermanager));
+
+	// start read/write threads
 	for _ in range(0, thread_count) {
+		let bm = bm.clone();
 		spawn(proc() {
-			println!("I'm a new task");
-		})
+			let is_write = random::<bool>();
+			let between = Range::new(0, pages_on_disk);
+			let mut rng = rand::task_rng();
+			let page_number = between.ind_sample(&mut rng);
+			let mut bm = bm.write();
+			println!("Creating new {} task",
+				if is_write {"write"} else {"read"});
+			if is_write {
+				let bf = match bm.fixPage(page_number, is_write) {
+					Some(frame) => frame,
+					None => fail!("Cound't fix page"),
+				};
+				{
+					let mut lock = bf.write();
+					let data = lock.get_mut_data();
+					data[0] = data[0] + 1;
+				}
+				bm.unfixPage(bf, is_write);
+			} else {
+				let bf = match bm.fixPage(page_number, is_write) {
+					Some(frame) => frame,
+					None => fail!("Cound't fix page"),
+				};
+				bm.unfixPage(bf, is_write);
+			}
+		});
 	}
 }
