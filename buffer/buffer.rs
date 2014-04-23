@@ -5,14 +5,6 @@ extern crate rand;
 use collections::HashMap;
 use std::io::{File, Open, Read, Write, TempDir};
 use sync::{Arc, RWLock};
-#[cfg(test)]
-use std::task::spawn;
-#[cfg(test)]
-use rand::random;
-#[cfg(test)]
-use rand::task_rng;
-#[cfg(test)]
-use rand::distributions::{IndependentSample, Range};
 
 struct BufferManager {
 	size: uint,
@@ -147,6 +139,11 @@ fn test_create() {
 
 #[test]
 fn test_threads() {
+	use rand::random;
+	use rand::task_rng;
+	use rand::distributions::{IndependentSample, Range};
+	use std::task::spawn;
+
 	let pages_in_ram = 20;
 	let pages_on_disk: u64 = 20;
 	let thread_count = 10;
