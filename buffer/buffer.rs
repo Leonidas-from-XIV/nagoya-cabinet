@@ -44,10 +44,13 @@ impl BufferManager {
 		let file_path = page_path.join(pageId.to_str());
 		match File::open_mode(&file_path, Open, Read) {
 			Ok(f) => f,
-			Err(e) => {
+			Err(_) => {
 				match File::open_mode(&file_path, Open, Write) {
 					Ok(mut f) => {
-						f.write([0_u8, ..4 * 1024]);
+						match f.write([0_u8, ..4 * 1024]) {
+							Ok(_) => (),
+							Err(e) => fail!("writing page failed: {}", e),
+						}
 						match File::open_mode(&file_path, Open, Read) {
 							Ok(f) => f,
 							Err(e) => fail!("failed reading file: {}", e),
