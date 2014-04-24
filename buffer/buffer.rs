@@ -1,10 +1,11 @@
 extern crate collections;
 extern crate sync;
-#[cfg(test)]
 extern crate rand;
 use collections::HashMap;
 use std::io::{File, Open, Read, Write, TempDir};
 use sync::{Arc, RWLock};
+use rand::task_rng;
+use rand::distributions::{IndependentSample, Range};
 
 struct BufferManager {
 	size: uint,
@@ -63,6 +64,7 @@ impl BufferManager {
 	}
 
 	fn loadPage(&mut self, pageId: u64) {
+		println!("loading {} page", pageId);
 		if self.entries.len() == self.size {
 			self.evictPage();
 		}
@@ -81,6 +83,10 @@ impl BufferManager {
 	fn evictPage(&mut self) {
 		// TODO delete a random page
 		// evicting is hard, let's go shopping
+		let mut iter = self.entries.keys();
+		let random_key = sample(&mut iter);
+		println!("Random key: {}", random_key);
+		//println!("entries: {}", self.entries.len())
 	}
 	
 	pub fn fixPage(&mut self, pageId: u64, exclusive: bool) -> Option<Arc<RWLock<BufferFrame>>> {
@@ -103,7 +109,7 @@ impl BufferManager {
 
 	fn writePage(&mut self, pageId: u64, data: &[u8]) {
 		// TODO: write page back to disk
-		println!("Writing {}", data);
+		//println!("Writing {}", data);
 	}
 }
 
@@ -123,6 +129,21 @@ impl BufferFrame {
 	}
 }
 
+fn sample<'a, T, I:Iterator<T>>(from: &'a mut I) -> Option<T> {
+	let from: ~[T] = from.collect();
+	let l = from.len();
+	if l == 0 {
+		println!("Zerolen");
+		return None;
+	}
+	let between = Range::new(0, l);
+	let mut rng = rand::task_rng();
+	let index = between.ind_sample(&mut rng);
+	println!("Index: {}", index);
+	println!("Len: {}", from.len());
+	Some(from[index])
+}
+
 #[test]
 fn test_create() {
 	let mut bm = BufferManager::new(16);
@@ -134,7 +155,7 @@ fn test_create() {
 		let mut page = pageref.write();
 		let data = page.get_mut_data();
 		data[0] = 42;
-		println!("data: {}", Vec::from_slice(data));
+		//println!("data: {}", Vec::from_slice(data));
 	}
 	bm.unfixPage(pageref, true);
 	fail!("always");
@@ -143,11 +164,9 @@ fn test_create() {
 #[test]
 fn test_threads() {
 	use rand::random;
-	use rand::task_rng;
-	use rand::distributions::{IndependentSample, Range};
 	use std::task::spawn;
 
-	let pages_in_ram = 20;
+	let pages_in_ram = 1;
 	let pages_on_disk: u64 = 20;
 	let thread_count = 10;
 	let mut buffermanager = BufferManager::new(pages_in_ram);
@@ -196,4 +215,5 @@ fn test_threads() {
 			}
 		});
 	}
+	fail!("always");
 }
