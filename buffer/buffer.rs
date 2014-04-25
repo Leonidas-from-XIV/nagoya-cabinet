@@ -99,7 +99,7 @@ impl BufferManager {
 		};
 	}
 	
-	pub fn fixPage(&mut self, pageId: u64, exclusive: bool) -> Option<Arc<RWLock<BufferFrame>>> {
+	pub fn fix_page(&mut self, pageId: u64) -> Option<Arc<RWLock<BufferFrame>>> {
 		// TODO
 		if !self.entries.contains_key(&pageId) {
 			self.loadPage(pageId);
@@ -109,8 +109,8 @@ impl BufferManager {
 		Some(entry.frame.clone())
 	}
 
-	pub fn unfixPage(&mut self, frame: Arc<RWLock<BufferFrame>>, isDirty: bool) {
-		if !isDirty {
+	pub fn unfix_page(&mut self, frame: Arc<RWLock<BufferFrame>>, is_dirty: bool) {
+		if !is_dirty {
 			return;
 		}
 		let frame = frame.read();
@@ -160,7 +160,7 @@ fn randrange<X: SampleRange + Ord + Zero>(high: X) -> X {
 #[test]
 fn test_create() {
 	let mut bm = BufferManager::new(16);
-	let pageref = match bm.fixPage(42, false) {
+	let pageref = match bm.fix_page(42) {
 		Some(p) => p,
 		None => fail!("Getting page failed"),
 	};
@@ -170,7 +170,7 @@ fn test_create() {
 		data[0] = 42;
 		//println!("data: {}", Vec::from_slice(data));
 	}
-	bm.unfixPage(pageref, true);
+	bm.unfix_page(pageref, true);
 	fail!("always");
 }
 
@@ -180,12 +180,12 @@ fn test_threads() {
 	use std::task::spawn;
 
 	let pages_in_ram = 1;
-	let mut pages_on_disk: u64 = 20;
+	let pages_on_disk: u64 = 20;
 	let thread_count = 3;
 	let mut buffermanager = BufferManager::new(pages_in_ram);
 
 	for i in range(0, pages_on_disk) {
-		let bf = match buffermanager.fixPage(i, true) {
+		let bf = match buffermanager.fix_page(i) {
 			Some(frame) => frame,
 			None => fail!("Couldn't fix page {}", i),
 		};
@@ -193,7 +193,7 @@ fn test_threads() {
 			let mut lock = bf.write();
 			lock.get_mut_data()[0] = 0;
 		}
-		buffermanager.unfixPage(bf, true);
+		buffermanager.unfix_page(bf, true);
 	}
 	let bm = Arc::new(RWLock::new(buffermanager));
 
@@ -208,24 +208,24 @@ fn test_threads() {
 			let page_number = randrange(pages_on_disk);
 			let mut bm = bm.write();
 			if is_write {
-				let bf = match bm.fixPage(page_number, is_write) {
+				let bf = match bm.fix_page(page_number) {
 					Some(frame) => frame,
 					None => fail!("Cound't fix page"),
 				};
 				{
 					println!("Wrote to page");
 					let mut lock = bf.write();
-					let mut data = lock.get_mut_data();
+					let data = lock.get_mut_data();
 					data[0] = data[0] + 1;
 					println!("data: {}", Vec::from_slice(data));
 				}
-				bm.unfixPage(bf, is_write);
+				bm.unfix_page(bf, is_write);
 			} else {
-				let bf = match bm.fixPage(page_number, is_write) {
+				let bf = match bm.fix_page(page_number) {
 					Some(frame) => frame,
 					None => fail!("Cound't fix page"),
 				};
-				bm.unfixPage(bf, is_write);
+				bm.unfix_page(bf, is_write);
 			}
 			// return whether we wrote (1) or read (0) as future
 			if is_write {1} else {0}
@@ -236,11 +236,13 @@ fn test_threads() {
 	let total_count = rw_threads.mut_iter().fold(0, |acc, val| acc + val.get());
 	println!("total_count: {}", total_count);
 
+	// TODO: add scan thread
+
 	//let mut bm = BufferManager::new(pages_in_ram);
 	let mut bm = bm.write();
 	let mut total_count_on_disk = 0;
 	for i in range(0, pages_on_disk) {
-		let bf = match bm.fixPage(i, false) {
+		let bf = match bm.fix_page(i) {
 			Some(frame) => frame,
 			None => fail!("Couldn't fix page")
 		};
@@ -249,7 +251,7 @@ fn test_threads() {
 			let data = lock.get_data();
 			data[0]
 		};
-		bm.unfixPage(bf, false);
+		bm.unfix_page(bf, false);
 		total_count_on_disk += value;
 	}
 	println!("Total count on disk: {}", total_count_on_disk);
