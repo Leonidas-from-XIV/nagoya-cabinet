@@ -5,6 +5,7 @@ use collections::HashMap;
 use std::io::{File, Open, Read, Write, TempDir};
 use std::num::Zero;
 use sync::{Arc, RWLock};
+use sync::Future;
 use rand::task_rng;
 use rand::distributions::{IndependentSample, Range};
 use rand::distributions::range::SampleRange;
@@ -67,11 +68,12 @@ impl BufferManager {
 
 	fn loadPage(&mut self, pageId: u64) {
 		if self.entries.len() == self.size {
-			self.evictPage();
+			//self.evictPage();
 		}
 
 		let mut file_handle = self.openOrCreate(pageId);
-		let content = match file_handle.read_exact(4*1024) {
+		//let content = match file_handle.read_exact(4*1024) {
+		let content = match file_handle.read_exact(10) {
 			Ok(c) => Vec::from_slice(c),
 			Err(e) => fail!("Couldn't read from page: {}", e),
 		};
@@ -112,12 +114,13 @@ impl BufferManager {
 			return;
 		}
 		let frame = frame.read();
+		println!("writing back {}", frame.pageId);
 		self.writePage(frame.pageId, frame.get_data());
 	}
 
 	fn writePage(&mut self, pageId: u64, data: &[u8]) {
 		// TODO: write page back to disk
-		//println!("Writing {}", data);
+		println!("Writing {}", data);
 	}
 }
 
@@ -141,12 +144,9 @@ fn sample<'a, T, I:Iterator<T>>(from: &'a mut I) -> Option<T> {
 	let from: ~[T] = from.collect();
 	let l = from.len();
 	if l == 0 {
-		println!("Zerolen");
 		return None;
 	}
 	let index = randrange(l);
-	println!("Index: {}", index);
-	println!("Len: {}", from.len());
 	Some(from[index])
 }
 
@@ -180,8 +180,8 @@ fn test_threads() {
 	use std::task::spawn;
 
 	let pages_in_ram = 1;
-	let pages_on_disk: u64 = 20;
-	let thread_count = 10;
+	let mut pages_on_disk: u64 = 20;
+	let thread_count = 3;
 	let mut buffermanager = BufferManager::new(pages_in_ram);
 
 	for i in range(0, pages_on_disk) {
@@ -198,23 +198,26 @@ fn test_threads() {
 	let bm = Arc::new(RWLock::new(buffermanager));
 
 	// start read/write threads
+	let mut rw_threads: Vec<Future<int>> = Vec::new();
 	for _ in range(0, thread_count) {
 		let bm = bm.clone();
-		spawn(proc() {
+		rw_threads.push(Future::spawn(proc() {
 			let is_write = random::<bool>();
-			let page_number = randrange(pages_on_disk);
-			let mut bm = bm.write();
 			println!("Creating new {} task",
 				if is_write {"write"} else {"read"});
+			let page_number = randrange(pages_on_disk);
+			let mut bm = bm.write();
 			if is_write {
 				let bf = match bm.fixPage(page_number, is_write) {
 					Some(frame) => frame,
 					None => fail!("Cound't fix page"),
 				};
 				{
+					println!("Wrote to page");
 					let mut lock = bf.write();
-					let data = lock.get_mut_data();
+					let mut data = lock.get_mut_data();
 					data[0] = data[0] + 1;
+					println!("data: {}", Vec::from_slice(data));
 				}
 				bm.unfixPage(bf, is_write);
 			} else {
@@ -224,7 +227,32 @@ fn test_threads() {
 				};
 				bm.unfixPage(bf, is_write);
 			}
-		});
+			// return whether we wrote (1) or read (0) as future
+			if is_write {1} else {0}
+		}));
 	}
+
+	// Rust does not have join, but we can wait on Futures which does the same
+	let total_count = rw_threads.mut_iter().fold(0, |acc, val| acc + val.get());
+	println!("total_count: {}", total_count);
+
+	//let mut bm = BufferManager::new(pages_in_ram);
+	let mut bm = bm.write();
+	let mut total_count_on_disk = 0;
+	for i in range(0, pages_on_disk) {
+		let bf = match bm.fixPage(i, false) {
+			Some(frame) => frame,
+			None => fail!("Couldn't fix page")
+		};
+		let value = {
+			let lock = bf.read();
+			let data = lock.get_data();
+			data[0]
+		};
+		bm.unfixPage(bf, false);
+		total_count_on_disk += value;
+	}
+	println!("Total count on disk: {}", total_count_on_disk);
+
 	fail!("always");
 }
