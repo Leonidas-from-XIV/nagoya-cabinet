@@ -13,7 +13,7 @@ use rand::distributions::range::SampleRange;
 struct BufferManager {
 	size: uint,
 	entries: HashMap<u64, BufferEntry>,
-	directory: TempDir,
+	path: Path,
 }
 
 struct BufferEntry {
@@ -34,18 +34,13 @@ impl Drop for BufferManager {
 }
 
 impl BufferManager {
-	pub fn new(size: uint) -> BufferManager {
+	pub fn new(size: uint, path: Path) -> BufferManager {
 		let h = HashMap::with_capacity(size);
-		let dir = match TempDir::new("buffermanager") {
-			Some(temp_dir) => temp_dir,
-			None => fail!("creation of temporary directory"),
-		};
-		BufferManager {size: size, entries: h, directory: dir}
+		BufferManager {size: size, entries: h, path: path}
 	}
 
 	fn open_or_create(&self, page_id: u64) -> File {
-		let page_path = self.directory.path();
-		let file_path = page_path.join(page_id.to_str());
+		let file_path = self.path.join(page_id.to_str());
 		match File::open_mode(&file_path, Open, Read) {
 			Ok(f) => f,
 			Err(_) => {
@@ -114,8 +109,7 @@ impl BufferManager {
 	}
 
 	fn write_page(&mut self, page_id: u64, data: &[u8]) {
-		let page_path = self.directory.path();
-		let file_path = page_path.join(page_id.to_str());
+		let file_path = self.path.join(page_id.to_str());
 		let mut handle = match File::open_mode(&file_path, Open, Write) {
 			Ok(handle) => handle,
 			Err(e) => fail!("Opening file for writing failed: {}", e),
@@ -162,7 +156,12 @@ fn randrange<X: SampleRange + Ord + Zero>(high: X) -> X {
 
 #[test]
 fn test_create() {
-	let mut bm = BufferManager::new(16);
+	let dir = match TempDir::new("buffermanager") {
+		Some(temp_dir) => temp_dir,
+		None => fail!("creation of temporary directory"),
+	};
+
+	let mut bm = BufferManager::new(16, dir.path().clone());
 	let pageref = match bm.fix_page(42) {
 		Some(p) => p,
 		None => fail!("Getting page failed"),
@@ -185,7 +184,14 @@ fn test_threads() {
 	let pages_in_ram = 1;
 	let pages_on_disk: u64 = 20;
 	let thread_count = 3;
-	let mut buffermanager = BufferManager::new(pages_in_ram);
+	let dir = match TempDir::new("buffermanager") {
+		Some(temp_dir) => temp_dir,
+		None => fail!("creation of temporary directory"),
+	};
+	let p = dir.path();
+	let p = Path::new(".");
+
+	let mut buffermanager = BufferManager::new(pages_in_ram, p.clone());
 
 	for i in range(0, pages_on_disk) {
 		let bf = match buffermanager.fix_page(i) {
@@ -241,8 +247,7 @@ fn test_threads() {
 
 	// TODO: add scan thread
 
-	//let mut bm = BufferManager::new(pages_in_ram);
-	let mut bm = bm.write();
+	let mut bm = BufferManager::new(pages_in_ram, p.clone());
 	let mut total_count_on_disk = 0;
 	for i in range(0, pages_on_disk) {
 		let bf = match bm.fix_page(i) {
@@ -255,9 +260,11 @@ fn test_threads() {
 			data[0]
 		};
 		bm.unfix_page(bf, false);
-		total_count_on_disk += value;
+		// cast up from u8 to int
+		total_count_on_disk += value as int;
 	}
 	println!("Total count on disk: {}", total_count_on_disk);
+	assert_eq!(total_count, total_count_on_disk);
 
 	fail!("always");
 }
