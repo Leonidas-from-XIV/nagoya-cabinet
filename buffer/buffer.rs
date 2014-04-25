@@ -3,9 +3,11 @@ extern crate sync;
 extern crate rand;
 use collections::HashMap;
 use std::io::{File, Open, Read, Write, TempDir};
+use std::num::Zero;
 use sync::{Arc, RWLock};
 use rand::task_rng;
 use rand::distributions::{IndependentSample, Range};
+use rand::distributions::range::SampleRange;
 
 struct BufferManager {
 	size: uint,
@@ -64,7 +66,6 @@ impl BufferManager {
 	}
 
 	fn loadPage(&mut self, pageId: u64) {
-		println!("loading {} page", pageId);
 		if self.entries.len() == self.size {
 			self.evictPage();
 		}
@@ -83,10 +84,17 @@ impl BufferManager {
 	fn evictPage(&mut self) {
 		// TODO delete a random page
 		// evicting is hard, let's go shopping
-		let mut iter = self.entries.keys();
-		let random_key = sample(&mut iter);
-		println!("Random key: {}", random_key);
-		//println!("entries: {}", self.entries.len())
+		//let random_key = sample(&mut self.entries.keys());
+		//let random_key = {let mut iter = self.entries.keys(); sample(&mut iter).clone()};
+		let random_key = {
+			let mut iter = self.entries.keys();
+			sample(&mut iter).map(|v| v.clone())
+		};
+
+		match random_key {
+			None => false,
+			Some(key) => self.entries.remove(&key),
+		};
 	}
 	
 	pub fn fixPage(&mut self, pageId: u64, exclusive: bool) -> Option<Arc<RWLock<BufferFrame>>> {
@@ -136,12 +144,17 @@ fn sample<'a, T, I:Iterator<T>>(from: &'a mut I) -> Option<T> {
 		println!("Zerolen");
 		return None;
 	}
-	let between = Range::new(0, l);
-	let mut rng = rand::task_rng();
-	let index = between.ind_sample(&mut rng);
+	let index = randrange(l);
 	println!("Index: {}", index);
 	println!("Len: {}", from.len());
 	Some(from[index])
+}
+
+fn randrange<X: SampleRange + Ord + Zero>(high: X) -> X {
+	let between: Range<X> = Range::new(Zero::zero(), high);
+	let mut rng = rand::task_rng();
+	let res = between.ind_sample(&mut rng);
+	res
 }
 
 #[test]
@@ -189,9 +202,7 @@ fn test_threads() {
 		let bm = bm.clone();
 		spawn(proc() {
 			let is_write = random::<bool>();
-			let between = Range::new(0, pages_on_disk);
-			let mut rng = rand::task_rng();
-			let page_number = between.ind_sample(&mut rng);
+			let page_number = randrange(pages_on_disk);
 			let mut bm = bm.write();
 			println!("Creating new {} task",
 				if is_write {"write"} else {"read"});
