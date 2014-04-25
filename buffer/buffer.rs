@@ -68,7 +68,7 @@ impl BufferManager {
 
 	fn loadPage(&mut self, pageId: u64) {
 		if self.entries.len() == self.size {
-			//self.evictPage();
+			self.evictPage();
 		}
 
 		let mut file_handle = self.openOrCreate(pageId);
@@ -84,10 +84,6 @@ impl BufferManager {
 	}
 
 	fn evictPage(&mut self) {
-		// TODO delete a random page
-		// evicting is hard, let's go shopping
-		//let random_key = sample(&mut self.entries.keys());
-		//let random_key = {let mut iter = self.entries.keys(); sample(&mut iter).clone()};
 		let random_key = {
 			let mut iter = self.entries.keys();
 			sample(&mut iter).map(|v| v.clone())
@@ -100,7 +96,6 @@ impl BufferManager {
 	}
 	
 	pub fn fix_page(&mut self, pageId: u64) -> Option<Arc<RWLock<BufferFrame>>> {
-		// TODO
 		if !self.entries.contains_key(&pageId) {
 			self.loadPage(pageId);
 		}
@@ -119,8 +114,17 @@ impl BufferManager {
 	}
 
 	fn writePage(&mut self, pageId: u64, data: &[u8]) {
-		// TODO: write page back to disk
-		println!("Writing {}", data);
+		let page_path = self.directory.path();
+		let file_path = page_path.join(pageId.to_str());
+		let mut handle = match File::open_mode(&file_path, Open, Write) {
+			Ok(handle) => handle,
+			Err(e) => fail!("Opening file for writing failed: {}", e),
+		};
+
+		match handle.write(data) {
+			Ok(_) => (),
+			Err(e) => fail!("Writing to file failed: {}", e),
+		};
 	}
 }
 
