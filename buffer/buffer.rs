@@ -21,7 +21,7 @@ struct BufferEntry {
 }
 
 struct BufferFrame {
-	pageId: u64,
+	page_id: u64,
 	data: Vec<u8>,
 }
 
@@ -43,9 +43,9 @@ impl BufferManager {
 		BufferManager {size: size, entries: h, directory: dir}
 	}
 
-	fn openOrCreate(&self, pageId: u64) -> File {
+	fn open_or_create(&self, page_id: u64) -> File {
 		let page_path = self.directory.path();
-		let file_path = page_path.join(pageId.to_str());
+		let file_path = page_path.join(page_id.to_str());
 		match File::open_mode(&file_path, Open, Read) {
 			Ok(f) => f,
 			Err(_) => {
@@ -66,24 +66,24 @@ impl BufferManager {
 		}
 	}
 
-	fn loadPage(&mut self, pageId: u64) {
+	fn load_page(&mut self, page_id: u64) {
 		if self.entries.len() == self.size {
-			self.evictPage();
+			self.evict_page();
 		}
 
-		let mut file_handle = self.openOrCreate(pageId);
+		let mut file_handle = self.open_or_create(page_id);
 		//let content = match file_handle.read_exact(4*1024) {
 		let content = match file_handle.read_exact(10) {
 			Ok(c) => Vec::from_slice(c),
 			Err(e) => fail!("Couldn't read from page: {}", e),
 		};
 
-		let frame = BufferFrame {data: content, pageId: pageId};
+		let frame = BufferFrame {data: content, page_id: page_id};
 		let entry = BufferEntry {frame: Arc::new(RWLock::new(frame))};
-		self.entries.insert(pageId, entry);
+		self.entries.insert(page_id, entry);
 	}
 
-	fn evictPage(&mut self) {
+	fn evict_page(&mut self) {
 		let random_key = {
 			let mut iter = self.entries.keys();
 			sample(&mut iter).map(|v| v.clone())
@@ -95,11 +95,11 @@ impl BufferManager {
 		};
 	}
 	
-	pub fn fix_page(&mut self, pageId: u64) -> Option<Arc<RWLock<BufferFrame>>> {
-		if !self.entries.contains_key(&pageId) {
-			self.loadPage(pageId);
+	pub fn fix_page(&mut self, page_id: u64) -> Option<Arc<RWLock<BufferFrame>>> {
+		if !self.entries.contains_key(&page_id) {
+			self.load_page(page_id);
 		}
-		let entry = self.entries.get(&pageId);
+		let entry = self.entries.get(&page_id);
 		// Arcs can be cloned and they will all point to the same RWLock
 		Some(entry.frame.clone())
 	}
@@ -109,13 +109,13 @@ impl BufferManager {
 			return;
 		}
 		let frame = frame.read();
-		println!("writing back {}", frame.pageId);
-		self.writePage(frame.pageId, frame.get_data());
+		println!("writing back {}", frame.page_id);
+		self.write_page(frame.page_id, frame.get_data());
 	}
 
-	fn writePage(&mut self, pageId: u64, data: &[u8]) {
+	fn write_page(&mut self, page_id: u64, data: &[u8]) {
 		let page_path = self.directory.path();
-		let file_path = page_path.join(pageId.to_str());
+		let file_path = page_path.join(page_id.to_str());
 		let mut handle = match File::open_mode(&file_path, Open, Write) {
 			Ok(handle) => handle,
 			Err(e) => fail!("Opening file for writing failed: {}", e),
@@ -157,8 +157,7 @@ fn sample<'a, T, I:Iterator<T>>(from: &'a mut I) -> Option<T> {
 fn randrange<X: SampleRange + Ord + Zero>(high: X) -> X {
 	let between: Range<X> = Range::new(Zero::zero(), high);
 	let mut rng = rand::task_rng();
-	let res = between.ind_sample(&mut rng);
-	res
+	between.ind_sample(&mut rng)
 }
 
 #[test]
