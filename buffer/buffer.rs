@@ -4,6 +4,7 @@ extern crate rand;
 use collections::HashMap;
 use std::io::{File, Open, Read, Write, TempDir};
 use std::num::Zero;
+use std::comm::{Data, Empty, Disconnected};
 use sync::{Arc, RWLock};
 use sync::Future;
 use rand::task_rng;
@@ -206,6 +207,44 @@ fn test_threads() {
 	}
 	let bm = Arc::new(RWLock::new(buffermanager));
 
+	// start scan thread
+	let (tx, rx) = channel();
+	let bm_scan = bm.clone();
+	let mut scan = Future::spawn(proc() {
+		let mut counters = Vec::from_elem(pages_on_disk as uint, 0_u8);
+		loop {
+			println!("Running scan thread...");
+			match rx.try_recv() {
+				Empty => {
+					let page_number = randrange(pages_on_disk);
+					let mut bm = bm_scan.write();
+					let bf = match bm.fix_page(page_number) {
+						Some(frame) => frame,
+						None => fail!("Couldn't scan/fix page"),
+					};
+					let current_val = {
+						let lock = bf.read();
+						lock.get_data()[0]
+					};
+					bm.unfix_page(bf, false);
+					bm.downgrade();
+					// check if the value is going up
+					assert!(&current_val >= counters.get(page_number as uint));
+					// set to the new value
+					let v = counters.get_mut(page_number as uint);
+					*v = current_val;
+
+				},
+				/*
+				 * terminate on both disconnect and when any kind of
+				 * data arrives
+				 */
+				Disconnected => break,
+				Data(_) => break,
+			};
+		}
+	});
+
 	// start read/write threads
 	let mut rw_threads: Vec<Future<int>> = Vec::new();
 	for _ in range(0, thread_count) {
@@ -219,7 +258,7 @@ fn test_threads() {
 			if is_write {
 				let bf = match bm.fix_page(page_number) {
 					Some(frame) => frame,
-					None => fail!("Cound't fix page"),
+					None => fail!("Couldn't fix page"),
 				};
 				{
 					println!("Wrote to page");
@@ -232,7 +271,7 @@ fn test_threads() {
 			} else {
 				let bf = match bm.fix_page(page_number) {
 					Some(frame) => frame,
-					None => fail!("Cound't fix page"),
+					None => fail!("Couldn't fix page"),
 				};
 				bm.unfix_page(bf, is_write);
 			}
@@ -245,8 +284,11 @@ fn test_threads() {
 	let total_count = rw_threads.mut_iter().fold(0, |acc, val| acc + val.get());
 	println!("total_count: {}", total_count);
 
-	// TODO: add scan thread
+	// terminate the scan thread and wait until it has completed
+	tx.send("terminate");
+	scan.get();
 
+	// re-open the pages and check whether all numbers got saved
 	let mut bm = BufferManager::new(pages_in_ram, p.clone());
 	let mut total_count_on_disk = 0;
 	for i in range(0, pages_on_disk) {
