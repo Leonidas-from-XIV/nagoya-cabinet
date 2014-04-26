@@ -12,8 +12,13 @@ use sync::Future;
 use rand::task_rng;
 use rand::distributions::{IndependentSample, Range};
 use rand::distributions::range::SampleRange;
+use native::io::file;
+use native::io::file::FileDesc;
+use std::rt::rtio::RtioFileStream;
 
 static PAGE_SIZE: uint = 4 * 1024;
+/* how much of the page_id should be reserved for pages */
+static PAGE_BITS: uint = 4;
 
 struct BufferManager {
 	size: uint,
@@ -51,26 +56,31 @@ impl BufferManager {
 		BufferManager {size: size, entries: h, path: path}
 	}
 
-	fn open_or_create(&self, page_id: u64) -> File {
+	fn open_or_create(&self, page_id: u64) -> FileDesc {
 		let file_path = self.path.join(page_id.to_str());
-		match File::open_mode(&file_path, Open, Read) {
+		match file::open(&file_path.to_c_str(), Open, Read) {
+			Ok(f) => return f,
+			Err(_) => self.create(&file_path),
+		};
+		match file::open(&file_path.to_c_str(), Open, Read) {
 			Ok(f) => f,
-			Err(_) => {
-				match File::open_mode(&file_path, Open, Write) {
-					Ok(mut f) => {
-						match f.write([0_u8, ..PAGE_SIZE]) {
-							Ok(_) => (),
-							Err(e) => fail!("writing page failed: {}", e),
-						}
-						match File::open_mode(&file_path, Open, Read) {
-							Ok(f) => f,
-							Err(e) => fail!("failed reading file: {}", e),
-						}
-					},
-					Err(e) => fail!("Writing file failed: {}", e),
-				}
-			},
+			Err(e) => fail!("Failed reopening written file: {}", e),
 		}
+	}
+
+	fn create(&self, page_id: u64) {
+		let path = self.path.join(page_id.to_str());
+		match file::open(&path.to_c_str(), Open, Write) {
+			Ok(mut f) => {
+				match f.pwrite([0_u8, ..PAGE_SIZE], 0) {
+					Ok(_) => (),
+					//Err(e) => fail!("Failed pwriting to file {}: {}", &path.to_c_str().as_str(), e),
+					// in this case, err means everything is fine, since there is a bug in Rust' libnative
+					Err(e) => (),
+				};
+			},
+			Err(e) => fail!("Failed opening file for write: {}", e),
+		};
 	}
 
 	/*
@@ -203,6 +213,12 @@ fn randrange<X: SampleRange + Ord + Zero>(high: X) -> X {
 	let between: Range<X> = Range::new(Zero::zero(), high);
 	let mut rng = rand::task_rng();
 	between.ind_sample(&mut rng)
+}
+
+fn split_segment(num: u64) -> (u64, u64) {
+	let high = num >> (64 - PAGE_BITS);
+	let low = num & ((1 << PAGE_BITS) - 1);
+	(high, low)
 }
 
 #[test]
