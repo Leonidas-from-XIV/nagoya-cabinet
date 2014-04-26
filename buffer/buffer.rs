@@ -1,3 +1,5 @@
+#![feature(phase)]
+#[phase(syntax, link)] extern crate log;
 extern crate collections;
 extern crate sync;
 extern crate rand;
@@ -36,8 +38,8 @@ struct BufferFrame {
 /* Destructor trait implementation */
 impl Drop for BufferManager {
 	fn drop(&mut self) {
-		println!("Dropping");
 		// TODO
+		info!("Dropping");
 	}
 }
 
@@ -151,7 +153,7 @@ impl BufferManager {
 		}
 		let frame = frame.read();
 		if frame.fixed == Free {
-			println!("writing back {}", frame.page_id);
+			info!("writing back page \\#{}", frame.page_id);
 			self.write_page(frame.page_id, frame.get_data());
 		}
 	}
@@ -218,7 +220,6 @@ fn test_create() {
 		let mut page = pageref.write();
 		let data = page.get_mut_data();
 		data[0] = 42;
-		//println!("data: {}", Vec::from_slice(data));
 	}
 	bm.unfix_page(pageref, true);
 }
@@ -269,7 +270,7 @@ fn test_threads() {
 	let mut scan = Future::spawn(proc() {
 		let mut counters = Vec::from_elem(pages_on_disk as uint, 0_u8);
 		loop {
-			println!("Running scan thread...");
+			info!("Running scan thread...");
 			match rx.try_recv() {
 				Empty => {
 					let page_number = randrange(pages_on_disk);
@@ -307,7 +308,7 @@ fn test_threads() {
 		let bm = bm.clone();
 		rw_threads.push(Future::spawn(proc() {
 			let is_write = random::<bool>();
-			println!("Creating new {} task",
+			info!("Creating new {} task",
 				if is_write {"write"} else {"read"});
 			let page_number = randrange(pages_on_disk);
 			let mut bm = bm.write();
@@ -317,11 +318,11 @@ fn test_threads() {
 					None => fail!("Couldn't fix page"),
 				};
 				{
-					println!("Wrote to page");
 					let mut lock = bf.write();
 					let data = lock.get_mut_data();
 					data[0] = data[0] + 1;
-					println!("data: {}", Vec::from_slice(data));
+					info!("Wrote to page {}", page_number);
+					debug!("data: {}", Vec::from_slice(data));
 				}
 				bm.unfix_page(bf, is_write);
 			} else {
@@ -338,7 +339,7 @@ fn test_threads() {
 
 	// Rust does not have join, but we can wait on Futures which does the same
 	let total_count = rw_threads.mut_iter().fold(0, |acc, val| acc + val.get());
-	println!("total_count: {}", total_count);
+	info!("Total count in RAM: {}", total_count);
 
 	// terminate the scan thread and wait until it has completed
 	tx.send("terminate");
@@ -361,8 +362,6 @@ fn test_threads() {
 		// cast up from u8 to int
 		total_count_on_disk += value as int;
 	}
-	println!("Total count on disk: {}", total_count_on_disk);
+	info!("Total count on disk: {}", total_count_on_disk);
 	assert_eq!(total_count, total_count_on_disk);
-
-	fail!("always");
 }
