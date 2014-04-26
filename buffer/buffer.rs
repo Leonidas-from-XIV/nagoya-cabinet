@@ -13,6 +13,8 @@ use rand::task_rng;
 use rand::distributions::{IndependentSample, Range};
 use rand::distributions::range::SampleRange;
 
+static PAGE_SIZE: uint = 4 * 1024;
+
 struct BufferManager {
 	size: uint,
 	entries: HashMap<u64, BufferEntry>,
@@ -56,7 +58,7 @@ impl BufferManager {
 			Err(_) => {
 				match File::open_mode(&file_path, Open, Write) {
 					Ok(mut f) => {
-						match f.write([0_u8, ..4 * 1024]) {
+						match f.write([0_u8, ..PAGE_SIZE]) {
 							Ok(_) => (),
 							Err(e) => fail!("writing page failed: {}", e),
 						}
@@ -82,8 +84,7 @@ impl BufferManager {
 		}
 
 		let mut file_handle = self.open_or_create(page_id);
-		//let content = match file_handle.read_exact(4*1024) {
-		let content = match file_handle.read_exact(10) {
+		let content = match file_handle.read_exact(PAGE_SIZE) {
 			Ok(c) => Vec::from_slice(c),
 			Err(e) => fail!("Couldn't read from page: {}", e),
 		};
