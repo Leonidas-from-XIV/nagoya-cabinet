@@ -97,9 +97,19 @@ impl BufferManager {
 	 */
 	fn evict_page(&mut self) -> bool {
 		let random_key = {
-			let mut iter = self.entries.keys();
-			// TODO check if there is a free page
-			sample(&mut iter).map(|v| v.clone())
+			let mut free_keys = self.entries.iter().filter_map(|e| {
+				// iterate over entries, check if they are free
+				// and return the keys of the free entries
+				let (k,v) = e;
+				let frame = v.frame.read();
+				if frame.fixed == Free {
+					Some(k)
+				} else {
+					None
+				}
+			});
+			// pick a random key
+			sample(&mut free_keys).map(|v| v.clone())
 		};
 
 		match random_key {
