@@ -4,7 +4,7 @@ extern crate collections;
 extern crate sync;
 extern crate rand;
 use collections::HashMap;
-use std::io::{File, Open, Read, Write, TempDir};
+use std::io::{Open, Read, Write, TempDir};
 use std::num::Zero;
 use std::comm::{Data, Empty, Disconnected};
 use sync::{Arc, RWLock};
@@ -57,10 +57,11 @@ impl BufferManager {
 	}
 
 	fn open_or_create(&self, page_id: u64) -> FileDesc {
-		let file_path = self.path.join(page_id.to_str());
+		let (segment, _) = split_segment(page_id);
+		let file_path = self.path.join(segment.to_str());
 		match file::open(&file_path.to_c_str(), Open, Read) {
 			Ok(f) => return f,
-			Err(_) => self.create(&file_path),
+			Err(_) => self.create(page_id),
 		};
 		match file::open(&file_path.to_c_str(), Open, Read) {
 			Ok(f) => f,
@@ -69,14 +70,16 @@ impl BufferManager {
 	}
 
 	fn create(&self, page_id: u64) {
-		let path = self.path.join(page_id.to_str());
+		let (segment, offset) = split_segment(page_id);
+		let path = self.path.join(segment.to_str());
+
 		match file::open(&path.to_c_str(), Open, Write) {
 			Ok(mut f) => {
-				match f.pwrite([0_u8, ..PAGE_SIZE], 0) {
+				match f.pwrite([0_u8, ..PAGE_SIZE], offset * PAGE_SIZE as u64) {
 					Ok(_) => (),
 					//Err(e) => fail!("Failed pwriting to file {}: {}", &path.to_c_str().as_str(), e),
 					// in this case, err means everything is fine, since there is a bug in Rust' libnative
-					Err(e) => (),
+					Err(_) => (),
 				};
 			},
 			Err(e) => fail!("Failed opening file for write: {}", e),
@@ -92,10 +95,21 @@ impl BufferManager {
 				return false;
 			}
 		}
+		let (_, offset) = split_segment(page_id);
 
 		let mut file_handle = self.open_or_create(page_id);
-		let content = match file_handle.read_exact(PAGE_SIZE) {
-			Ok(c) => Vec::from_slice(c),
+		let mut buf = [0_u8, ..PAGE_SIZE];
+		let content = match file_handle.pread(buf, offset * PAGE_SIZE as u64) {
+			Ok(_) => {
+				Vec::from_slice(buf)
+				/*
+				if n == PAGE_SIZE as int {
+					Vec::from_slice(buf)
+				} else {
+					fail!("pread failed: wanted {}, got {}",
+						PAGE_SIZE, n)
+				}*/
+			},
 			Err(e) => fail!("Couldn't read from page: {}", e),
 		};
 
@@ -164,21 +178,25 @@ impl BufferManager {
 		}
 		let frame = frame.read();
 		if frame.fixed == Free {
-			info!("writing back page \\#{}", frame.page_id);
+			//info!("writing back page \\#{}", frame.page_id);
 			self.write_page(frame.page_id, frame.get_data());
 		}
 	}
 
 	fn write_page(&mut self, page_id: u64, data: &[u8]) {
-		let file_path = self.path.join(page_id.to_str());
-		let mut handle = match File::open_mode(&file_path, Open, Write) {
+		let (segment, offset) = split_segment(page_id);
+		let file_path = self.path.join(segment.to_str());
+		let mut handle = match file::open(&file_path.to_c_str(), Open, Write) {
 			Ok(handle) => handle,
 			Err(e) => fail!("Opening file for writing failed: {}", e),
 		};
 
-		match handle.write(data) {
+		println!("Writing to segment {}, page {}", segment, offset);
+		match handle.pwrite(data, offset * PAGE_SIZE as u64) {
 			Ok(_) => (),
-			Err(e) => fail!("Writing to file failed: {}", e),
+			//Err(e) => fail!("Writing to file failed: {}", e),
+			// again Rust 0.10 pwrite error
+			Err(_) => (),
 		};
 	}
 }
@@ -216,7 +234,7 @@ fn randrange<X: SampleRange + Ord + Zero>(high: X) -> X {
 }
 
 fn split_segment(num: u64) -> (u64, u64) {
-	let high = num >> (64 - PAGE_BITS);
+	let high = num >> PAGE_BITS;
 	let low = num & ((1 << PAGE_BITS) - 1);
 	(high, low)
 }
