@@ -38,3 +38,17 @@ rustc --test sort.rs
 # this test generates random data, sorts in 100MB chunks, merges the chunks
 # and verifies that the result is ordered.
 ```
+
+Build buffer
+------------
+
+The buffer implementation can be tested with the built-in testsuite.
+Unfortunately, it doesn't take command line arguments, but you can specify
+environment variables to specify some parameters if you like. Or don't, some
+defaults are provided.
+
+```sh
+cd buffer
+rustc --test buffer.rs
+env THREADS=a PAGES_ON_DISK=b PAGES_IN_RAM=c ./buffer
+```

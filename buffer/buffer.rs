@@ -221,17 +221,26 @@ fn test_create() {
 		//println!("data: {}", Vec::from_slice(data));
 	}
 	bm.unfix_page(pageref, true);
-	fail!("always");
 }
 
 #[test]
 fn test_threads() {
 	use rand::random;
 	use std::task::spawn;
+	use std::os;
 
-	let pages_in_ram = 1;
-	let pages_on_disk: u64 = 20;
-	let thread_count = 3;
+	let pages_in_ram: uint = match os::getenv("PAGES_IN_RAM") {
+		Some(v) => from_str(v).expect("PAGES_IN_RAM expects integer"),
+		None => 1,
+	};
+	let pages_on_disk: u64 = match os::getenv("PAGES_ON_DISK") {
+		Some(v) => from_str(v).expect("PAGES_ON_DISK expects integer"),
+		None => 20,
+	};
+	let thread_count: uint = match os::getenv("THREADS") {
+		Some(v) => from_str(v).expect("THREADS expects integer"),
+		None => 3,
+	};
 	let dir = match TempDir::new("buffermanager") {
 		Some(temp_dir) => temp_dir,
 		None => fail!("creation of temporary directory"),
