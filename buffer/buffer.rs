@@ -16,8 +16,15 @@ use native::io::file;
 use native::io::file::FileDesc;
 use std::rt::rtio::RtioFileStream;
 
+/* Linux seems to use 4K segments, that's a good bet */
 static PAGE_SIZE: uint = 4 * 1024;
-/* how much of the page_id should be reserved for pages */
+/*
+ * how much of the page_id should be reserved for pages?
+ * the rest goes for segments. The bigger this is, the larger the segment files are
+ * and the more pages they contain. (2^PAGE_BITS)*PAGE_SIZE gives you segment size.
+ *
+ * Adjust as required.
+ */
 static PAGE_BITS: uint = 4;
 
 struct BufferManager {
@@ -191,7 +198,7 @@ impl BufferManager {
 			Err(e) => fail!("Opening file for writing failed: {}", e),
 		};
 
-		println!("Writing to segment {}, page {}", segment, offset);
+		info!("Writing to segment {}, offset {}", segment, offset);
 		match handle.pwrite(data, offset * PAGE_SIZE as u64) {
 			Ok(_) => (),
 			//Err(e) => fail!("Writing to file failed: {}", e),
