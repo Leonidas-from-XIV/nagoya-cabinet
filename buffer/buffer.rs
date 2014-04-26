@@ -21,9 +21,16 @@ struct BufferEntry {
 	frame: Arc<RWLock<BufferFrame>>,
 }
 
+#[deriving(Eq)]
+enum Status {
+	Free,
+	Fixed(uint),
+}
+
 struct BufferFrame {
 	page_id: u64,
 	data: Vec<u8>,
+	fixed: Status,
 }
 
 /* Destructor trait implementation */
@@ -62,9 +69,14 @@ impl BufferManager {
 		}
 	}
 
-	fn load_page(&mut self, page_id: u64) {
+	/*
+	 * returns true if page could be loaded
+	 */
+	fn load_page(&mut self, page_id: u64) -> bool {
 		if self.entries.len() == self.size {
-			self.evict_page();
+			if !self.evict_page() {
+				return false;
+			}
 		}
 
 		let mut file_handle = self.open_or_create(page_id);
@@ -74,39 +86,64 @@ impl BufferManager {
 			Err(e) => fail!("Couldn't read from page: {}", e),
 		};
 
-		let frame = BufferFrame {data: content, page_id: page_id};
+		let frame = BufferFrame {data: content, page_id: page_id, fixed: Free};
 		let entry = BufferEntry {frame: Arc::new(RWLock::new(frame))};
 		self.entries.insert(page_id, entry);
+		true
 	}
 
-	fn evict_page(&mut self) {
+	/*
+	 * return false if no page could be evicted
+	 */
+	fn evict_page(&mut self) -> bool {
 		let random_key = {
 			let mut iter = self.entries.keys();
+			// TODO check if there is a free page
 			sample(&mut iter).map(|v| v.clone())
 		};
 
 		match random_key {
 			None => false,
 			Some(key) => self.entries.remove(&key),
-		};
+		}
 	}
 	
 	pub fn fix_page(&mut self, page_id: u64) -> Option<Arc<RWLock<BufferFrame>>> {
 		if !self.entries.contains_key(&page_id) {
-			self.load_page(page_id);
+			if !self.load_page(page_id) {
+				return None;
+			}
 		}
 		let entry = self.entries.get(&page_id);
+		{
+			let mut f = entry.frame.write();
+			f.fixed = match f.fixed {
+				Free => Fixed(1),
+				Fixed(n) => Fixed(n+1),
+			};
+		}
 		// Arcs can be cloned and they will all point to the same RWLock
 		Some(entry.frame.clone())
 	}
 
 	pub fn unfix_page(&mut self, frame: Arc<RWLock<BufferFrame>>, is_dirty: bool) {
+		{
+			let mut frame = frame.write();
+			frame.fixed = match frame.fixed {
+				Fixed(1) => Free,
+				Fixed(n) => Fixed(n-1),
+				Free => fail!("Unfixing unfixed page"),
+			};
+		}
+
 		if !is_dirty {
 			return;
 		}
 		let frame = frame.read();
-		println!("writing back {}", frame.page_id);
-		self.write_page(frame.page_id, frame.get_data());
+		if frame.fixed == Free {
+			println!("writing back {}", frame.page_id);
+			self.write_page(frame.page_id, frame.get_data());
+		}
 	}
 
 	fn write_page(&mut self, page_id: u64, data: &[u8]) {
