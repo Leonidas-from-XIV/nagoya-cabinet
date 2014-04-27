@@ -52,3 +52,5 @@ cd buffer
 rustc --test buffer.rs
 env THREADS=a PAGES_ON_DISK=b PAGES_IN_RAM=c ./buffer
 ```
+
+To get more information output, the `RUST_LOG` variable can be used as above.
