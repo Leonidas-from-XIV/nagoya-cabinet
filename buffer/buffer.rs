@@ -289,7 +289,7 @@ fn test_threads() {
 		None => fail!("creation of temporary directory"),
 	};
 	let p = dir.path();
-	let p = Path::new(".");
+	//let p = Path::new(".");
 
 	let mut buffermanager = BufferManager::new(pages_in_ram, p.clone());
 
