@@ -20,8 +20,31 @@ struct Relation {
 	columns: Vec<Column>,
 }
 
+impl Relation {
+	pub fn new(name: ~str) -> Relation {
+		Relation {name: name, columns: Vec::new()}
+	}
+
+	pub fn add_column(&mut self, column: Column) {
+		self.columns.push(column);
+	}
+}
+
 struct Schema {
 	relations: Vec<Relation>,
+}
+
+impl Schema {
+	pub fn new() -> Schema {
+		Schema {relations: Vec::new()}
+	}
+
+	pub fn new_from_disk() {
+	}
+
+	pub fn add_relation(&mut self, relation: Relation) {
+		self.relations.push(relation);
+	}
 }
 
 struct Record {
@@ -68,4 +91,15 @@ impl SPSegment {
 
 #[test]
 fn main() {
+}
+
+#[test]
+fn create_schema() {
+	let name = Column {name: ~"name", datatype: Varchar(128), attributes: vec!(NotNull)};
+	let age = Column {name: ~"age", datatype: Integer, attributes: vec!(NotNull)};
+	let mut relation = Relation::new(~"Person");
+	relation.add_column(name);
+	relation.add_column(age);
+	let mut schema = Schema::new();
+	schema.add_relation(relation);
 }
