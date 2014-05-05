@@ -1,3 +1,29 @@
+enum SqlType {
+	Char(uint),
+	Varchar(uint),
+	Integer,
+}
+
+enum SqlAttribute {
+	Null,
+	NotNull,
+}
+
+struct Column {
+	name: ~str,
+	datatype: SqlType,
+	attributes: Vec<SqlAttribute>,
+}
+
+struct Relation {
+	name: ~str,
+	columns: Vec<Column>,
+}
+
+struct Schema {
+	relations: Vec<Relation>,
+}
+
 struct Record {
 	// TODO: do we even need this?
 	len: uint,
