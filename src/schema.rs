@@ -4,9 +4,8 @@ extern crate collections;
 extern crate sync;
 extern crate rand;
 extern crate serialize;
-use std::io::MemWriter;
-use serialize::ebml::writer;
-use serialize::ebml::reader;
+use std::io::{IoResult, IoError, IoUnavailable, SeekStyle, MemWriter};
+use serialize::ebml::{reader,writer};
 use serialize::{Encodable, Decodable};
 mod buffer;
 
@@ -49,6 +48,26 @@ impl Relation {
 #[deriving(Encodable, Decodable)]
 struct Schema {
 	relations: Vec<Relation>,
+}
+
+struct SchemaWriter{
+	buffer_manager: buffer::BufferManager,
+}
+
+impl Writer for SchemaWriter {
+	fn write(&mut self, buf: &[u8]) -> IoResult<()> {
+		Err(IoError {kind: IoUnavailable, desc: "Unavailable", detail: None})
+	}
+}
+
+impl Seek for SchemaWriter {
+	fn tell(&self) -> IoResult<u64> {
+		Err(IoError {kind: IoUnavailable, desc: "Unavailable", detail: None})
+	}
+
+	fn seek(&mut self, pos: i64, style: SeekStyle) -> IoResult<()> {
+		Err(IoError {kind: IoUnavailable, desc: "Unavailable", detail: None})
+	}
 }
 
 impl Schema {
