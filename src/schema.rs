@@ -46,7 +46,9 @@ impl Schema {
 		Schema {relations: Vec::new()}
 	}
 
-	pub fn new_from_disk() {
+	pub fn new_from_disk(bufmanager: buffer::BufferManager) -> Schema {
+		// TODO
+		Schema {relations: Vec::new()}
 	}
 
 	pub fn add_relation(&mut self, relation: Relation) {
