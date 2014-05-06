@@ -1,3 +1,10 @@
+#![feature(phase)]
+#[phase(syntax, link)] extern crate log;
+extern crate collections;
+extern crate sync;
+extern crate rand;
+mod buffer;
+
 enum SqlType {
 	Char(uint),
 	Varchar(uint),

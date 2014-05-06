@@ -1,8 +1,3 @@
-#![feature(phase)]
-#[phase(syntax, link)] extern crate log;
-extern crate collections;
-extern crate sync;
-extern crate rand;
 use collections::HashMap;
 use std::io::{Open, Read, Write, TempDir};
 use std::num::Zero;
@@ -27,7 +22,7 @@ static PAGE_SIZE: uint = 4 * 1024;
  */
 static PAGE_BITS: uint = 4;
 
-struct BufferManager {
+pub struct BufferManager {
 	size: uint,
 	entries: HashMap<u64, BufferEntry>,
 	path: Path,
@@ -236,7 +231,7 @@ fn sample<'a, T, I:Iterator<T>>(from: &'a mut I) -> Option<T> {
 
 fn randrange<X: SampleRange + Ord + Zero>(high: X) -> X {
 	let between: Range<X> = Range::new(Zero::zero(), high);
-	let mut rng = rand::task_rng();
+	let mut rng = task_rng();
 	between.ind_sample(&mut rng)
 }
 
