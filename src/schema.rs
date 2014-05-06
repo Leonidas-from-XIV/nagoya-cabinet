@@ -52,6 +52,7 @@ struct Schema {
 
 struct SchemaWriter{
 	buffer_manager: buffer::BufferManager,
+	location: u64,
 }
 
 impl Writer for SchemaWriter {
@@ -62,11 +63,17 @@ impl Writer for SchemaWriter {
 
 impl Seek for SchemaWriter {
 	fn tell(&self) -> IoResult<u64> {
-		Err(IoError {kind: IoUnavailable, desc: "Unavailable", detail: None})
+		Ok(self.location)
 	}
 
 	fn seek(&mut self, pos: i64, style: SeekStyle) -> IoResult<()> {
 		Err(IoError {kind: IoUnavailable, desc: "Unavailable", detail: None})
+	}
+}
+
+impl SchemaWriter {
+	pub fn new(bufman: buffer::BufferManager) -> SchemaWriter {
+		SchemaWriter {buffer_manager: bufman, location: 0}
 	}
 }
 
@@ -121,12 +128,12 @@ impl Record {
 
 struct SPSegment;
 
-/* our newtype struct: create a TID type as an alias to u64 */
-struct TID(u64);
+/* our newtype struct: create a TID type as an alias to another type */
+struct TID(u8);
 
 impl SPSegment {
 	pub fn insert(r: Record) -> TID {
-		TID(0_u64)
+		TID(0)
 	}
 
 	pub fn remove(tid: TID) -> bool {
