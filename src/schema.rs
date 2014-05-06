@@ -3,6 +3,11 @@
 extern crate collections;
 extern crate sync;
 extern crate rand;
+extern crate serialize;
+use std::io::MemWriter;
+use serialize::ebml::writer;
+use serialize::ebml::reader;
+use serialize::{Encodable, Decodable};
 mod buffer;
 
 enum SqlType {
@@ -53,6 +58,23 @@ impl Schema {
 
 	pub fn add_relation(&mut self, relation: Relation) {
 		self.relations.push(relation);
+	}
+
+	pub fn save_to_disk(&self) {
+		let mut wr = MemWriter::new();
+		let v: u64 = 42;
+		{
+			let mut ebml_w = writer::Encoder(&mut wr);
+			let _ = v.encode(&mut ebml_w);
+		}
+		let ebml_doc = reader::Doc(wr.get_ref());
+		let mut deser = reader::Decoder(ebml_doc);
+		let v1: u64 = Decodable::decode(&mut deser).unwrap();
+		println!("v1 == {:?}", v1);
+
+		for rel in self.relations.iter() {
+			//rel.save_to_disk()
+		}
 	}
 }
 
@@ -111,4 +133,6 @@ fn create_schema() {
 	relation.add_column(age);
 	let mut schema = Schema::new();
 	schema.add_relation(relation);
+	schema.save_to_disk();
+	assert!(false);
 }
