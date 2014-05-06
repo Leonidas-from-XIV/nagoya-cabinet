@@ -10,23 +10,27 @@ use serialize::ebml::reader;
 use serialize::{Encodable, Decodable};
 mod buffer;
 
+#[deriving(Encodable, Decodable)]
 enum SqlType {
 	Char(uint),
 	Varchar(uint),
 	Integer,
 }
 
+#[deriving(Encodable, Decodable)]
 enum SqlAttribute {
 	Null,
 	NotNull,
 }
 
+#[deriving(Encodable, Decodable)]
 struct Column {
 	name: ~str,
 	datatype: SqlType,
 	attributes: Vec<SqlAttribute>,
 }
 
+#[deriving(Encodable, Decodable)]
 struct Relation {
 	name: ~str,
 	columns: Vec<Column>,
@@ -42,6 +46,7 @@ impl Relation {
 	}
 }
 
+#[deriving(Encodable, Decodable)]
 struct Schema {
 	relations: Vec<Relation>,
 }
@@ -65,11 +70,11 @@ impl Schema {
 		let v: u64 = 42;
 		{
 			let mut ebml_w = writer::Encoder(&mut wr);
-			let _ = v.encode(&mut ebml_w);
+			let _ = self.encode(&mut ebml_w);
 		}
 		let ebml_doc = reader::Doc(wr.get_ref());
 		let mut deser = reader::Decoder(ebml_doc);
-		let v1: u64 = Decodable::decode(&mut deser).unwrap();
+		let v1: Schema = Decodable::decode(&mut deser).unwrap();
 		println!("v1 == {:?}", v1);
 
 		for rel in self.relations.iter() {
