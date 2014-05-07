@@ -12,7 +12,7 @@ use native::io::file::FileDesc;
 use std::rt::rtio::RtioFileStream;
 
 /* Linux seems to use 4K segments, that's a good bet */
-static PAGE_SIZE: uint = 4 * 1024;
+pub static PAGE_SIZE: uint = 4 * 1024;
 /*
  * how much of the page_id should be reserved for pages?
  * the rest goes for segments. The bigger this is, the larger the segment files are
@@ -20,7 +20,7 @@ static PAGE_SIZE: uint = 4 * 1024;
  *
  * Adjust as required.
  */
-static PAGE_BITS: uint = 4;
+static PAGE_BITS: uint = 48;
 
 pub struct BufferManager {
 	size: uint,
