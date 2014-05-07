@@ -75,6 +75,7 @@ impl Writer for SchemaWriter {
 				self.location += 1;
 			}
 		}
+		self.buffer_manager.unfix_page(pagelock, true);
 		//TODO remaining bytes from buf
 		println!("copied {}/{}, location: {}", copied, buf.len(), self.location);
 		//assert!(copied, buf.len());
@@ -130,8 +131,11 @@ impl SchemaWriter {
 			println!("Reading page {}", i);
 			let pagelock = self.buffer_manager.fix_page(i).unwrap_or_else(
 				|| fail!("Failed fixing page {}", i));
-			let page = pagelock.read();
-			data.push_all(page.get_data());
+			{
+				let page = pagelock.read();
+				data.push_all(page.get_data());
+			}
+			self.buffer_manager.unfix_page(pagelock, false);
 		}
 		data
 	}
