@@ -52,13 +52,13 @@ struct Schema {
 	relations: Vec<Relation>,
 }
 
-struct SchemaWriter{
-	buffer_manager: buffer::BufferManager,
+struct SchemaWriter<'a> {
+	buffer_manager: &'a mut buffer::BufferManager,
 	location: u64,
 	maximum: u64,
 }
 
-impl Writer for SchemaWriter {
+impl<'a> Writer for SchemaWriter<'a> {
 	fn write(&mut self, buf: &[u8]) -> IoResult<()> {
 		let pageno = self.location / buffer::PAGE_SIZE as u64 + 1;
 		let start_from = (self.location % buffer::PAGE_SIZE as u64) as uint;
@@ -103,7 +103,7 @@ impl Writer for SchemaWriter {
 	}
 }
 
-impl Seek for SchemaWriter {
+impl<'a> Seek for SchemaWriter<'a> {
 	fn tell(&self) -> IoResult<u64> {
 		Ok(self.location)
 	}
@@ -130,8 +130,8 @@ impl Seek for SchemaWriter {
 	}
 }
 
-impl SchemaWriter {
-	pub fn new(bufman: buffer::BufferManager) -> SchemaWriter {
+impl<'a> SchemaWriter<'a> {
+	pub fn new<'b>(bufman: &'b mut buffer::BufferManager) -> SchemaWriter<'b> {
 		SchemaWriter {buffer_manager: bufman, location: 0,
 			maximum: 0}
 	}
@@ -177,19 +177,25 @@ impl Schema {
 		Schema {relations: Vec::new()}
 	}
 
-	pub fn new_from_disk(bufmanager: buffer::BufferManager) -> Schema {
-		// TODO
-		Schema {relations: Vec::new()}
+	pub fn new_from_disk(bufmanager: &mut buffer::BufferManager) -> Schema {
+		let mut wr = SchemaWriter::new(bufmanager);
+		let data = wr.get_data();
+		let ebml_doc = reader::Doc(data.as_slice());
+		let mut deser = reader::Decoder(ebml_doc);
+		let value: Schema = match Decodable::decode(&mut deser) {
+			Ok(v) => v,
+			Err(e) => fail!("Error decoding: {}", e),
+		};
+		value
 	}
 
 	pub fn add_relation(&mut self, relation: Relation) {
 		self.relations.push(relation);
 	}
 
-	pub fn save_to_disk(&self, bufmanager: buffer::BufferManager) {
+	pub fn save_to_disk(&self, bufmanager: &mut buffer::BufferManager) {
 		let mut wr1 = MemWriter::new();
 		let mut wr2 = SchemaWriter::new(bufmanager);
-		let v: u64 = 42;
 		{
 			let mut ebml_w1 = writer::Encoder(&mut wr1);
 			let _ = self.encode(&mut ebml_w1);
@@ -201,7 +207,7 @@ impl Schema {
 		println!("wr1 len: {}", wr1.get_ref().len());
 		println!("wr2 len: {}", dta.len());
 		let ebml_doc1 = reader::Doc(wr1.get_ref());
-		let ebml_doc2 = reader::Doc(dta.slice_to(290));
+		let ebml_doc2 = reader::Doc(dta.as_slice());
 		let mut deser1 = reader::Decoder(ebml_doc1);
 		let mut deser2 = reader::Decoder(ebml_doc2);
 		let v1: Schema = match Decodable::decode(&mut deser1) {
@@ -214,10 +220,6 @@ impl Schema {
 			Err(e) => fail!("Error decoding: {}", e),
 		};
 		println!("v2 == {:?}", v2);
-
-		for rel in self.relations.iter() {
-			//rel.save_to_disk()
-		}
 	}
 }
 
@@ -276,7 +278,10 @@ fn create_schema() {
 	relation.add_column(age);
 	let mut schema = Schema::new();
 	schema.add_relation(relation);
+
 	let mut manager = buffer::BufferManager::new(1024, Path::new("."));
-	schema.save_to_disk(manager);
+	schema.save_to_disk(&mut manager);
+	let new_schema = Schema::new_from_disk(&mut manager);
+	println!("new_schema == {:?}", new_schema);
 	assert!(false);
 }
