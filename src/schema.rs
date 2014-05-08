@@ -4,8 +4,8 @@ extern crate collections;
 extern crate sync;
 extern crate rand;
 extern crate serialize;
-use std::cmp::{min, max};
-use std::io::{IoResult, IoError, InvalidInput, SeekStyle, MemWriter, BufWriter, BufReader};
+use std::cmp::min;
+use std::io::{IoResult, IoError, InvalidInput, SeekStyle, BufWriter, BufReader};
 use std::io::{SeekSet, SeekEnd, SeekCur};
 use serialize::ebml::{reader,writer};
 use serialize::{Encodable, Decodable};
@@ -84,7 +84,10 @@ impl<'a> Writer for SchemaWriter<'a> {
 				let mut page = pagelock.write();
 				let content = page.get_mut_data();
 				let mut writer = BufWriter::new(content);
-				writer.write_le_u64(self.maximum);
+				match writer.write_le_u64(self.maximum) {
+					Ok(_) => (),
+					Err(e) => fail!("Failed writing lenght to page: {}", e)
+				};
 			}
 			self.buffer_manager.unfix_page(pagelock, true);
 		}
@@ -139,7 +142,7 @@ impl<'a> SchemaWriter<'a> {
 	pub fn get_data(&mut self) -> Vec<u8> {
 		let pagelock = self.buffer_manager.fix_page(0).unwrap_or_else(
 			|| fail!("Failed fixing 0 page for schema length"));
-		let mut size = 0_u64;
+		let mut size;
 		{
 			let page = pagelock.read();
 			let mut reader = BufReader::new(page.get_data());
@@ -194,32 +197,11 @@ impl Schema {
 	}
 
 	pub fn save_to_disk(&self, bufmanager: &mut buffer::BufferManager) {
-		let mut wr1 = MemWriter::new();
-		let mut wr2 = SchemaWriter::new(bufmanager);
+		let mut wr = SchemaWriter::new(bufmanager);
 		{
-			let mut ebml_w1 = writer::Encoder(&mut wr1);
-			let _ = self.encode(&mut ebml_w1);
-			let mut ebml_w2 = writer::Encoder(&mut wr2);
-			let _ = self.encode(&mut ebml_w2);
+			let mut ebml_w = writer::Encoder(&mut wr);
+			let _ = self.encode(&mut ebml_w);
 		}
-
-		let dta = wr2.get_data();
-		println!("wr1 len: {}", wr1.get_ref().len());
-		println!("wr2 len: {}", dta.len());
-		let ebml_doc1 = reader::Doc(wr1.get_ref());
-		let ebml_doc2 = reader::Doc(dta.as_slice());
-		let mut deser1 = reader::Decoder(ebml_doc1);
-		let mut deser2 = reader::Decoder(ebml_doc2);
-		let v1: Schema = match Decodable::decode(&mut deser1) {
-			Ok(v) => v,
-			Err(e) => fail!("Error decoding: {}", e),
-		};
-		println!("v1 == {:?}", v1);
-		let v2: Schema = match Decodable::decode(&mut deser2) {
-			Ok(v) => v,
-			Err(e) => fail!("Error decoding: {}", e),
-		};
-		println!("v2 == {:?}", v2);
 	}
 }
 
