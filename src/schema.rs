@@ -4,8 +4,8 @@ extern crate collections;
 extern crate sync;
 extern crate rand;
 extern crate serialize;
-use std::cmp::min;
-use std::io::{IoResult, IoError, InvalidInput, SeekStyle, MemWriter};
+use std::cmp::{min, max};
+use std::io::{IoResult, IoError, InvalidInput, SeekStyle, MemWriter, BufWriter, BufReader};
 use std::io::{SeekSet, SeekEnd, SeekCur};
 use serialize::ebml::{reader,writer};
 use serialize::{Encodable, Decodable};
@@ -55,13 +55,13 @@ struct Schema {
 struct SchemaWriter{
 	buffer_manager: buffer::BufferManager,
 	location: u64,
+	maximum: u64,
 }
 
 impl Writer for SchemaWriter {
 	fn write(&mut self, buf: &[u8]) -> IoResult<()> {
-		let pageno = self.location / buffer::PAGE_SIZE as u64;
+		let pageno = self.location / buffer::PAGE_SIZE as u64 + 1;
 		let start_from = (self.location % buffer::PAGE_SIZE as u64) as uint;
-		//let remaining_bytes = buffer::PAGE_SIZE - start_from;
 
 		let pagelock = self.buffer_manager.fix_page(pageno).unwrap_or_else(|| fail!("Fix page failed"));
 		let mut copied = 0;
@@ -76,6 +76,18 @@ impl Writer for SchemaWriter {
 			}
 		}
 		self.buffer_manager.unfix_page(pagelock, true);
+		if self.location > self.maximum {
+			self.maximum = self.location;
+			let pagelock = self.buffer_manager.fix_page(0).unwrap_or_else(
+				|| fail!("Fixing zero page failed"));
+			{
+				let mut page = pagelock.write();
+				let content = page.get_mut_data();
+				let mut writer = BufWriter::new(content);
+				writer.write_le_u64(self.maximum);
+			}
+			self.buffer_manager.unfix_page(pagelock, true);
+		}
 		//TODO remaining bytes from buf
 		println!("copied {}/{}, location: {}", copied, buf.len(), self.location);
 		//assert!(copied, buf.len());
@@ -120,20 +132,39 @@ impl Seek for SchemaWriter {
 
 impl SchemaWriter {
 	pub fn new(bufman: buffer::BufferManager) -> SchemaWriter {
-		SchemaWriter {buffer_manager: bufman, location: 0}
+		SchemaWriter {buffer_manager: bufman, location: 0,
+			maximum: 0}
 	}
 
 	pub fn get_data(&mut self) -> Vec<u8> {
-		let mut data: Vec<u8> = Vec::new();
+		let pagelock = self.buffer_manager.fix_page(0).unwrap_or_else(
+			|| fail!("Failed fixing 0 page for schema length"));
+		let mut size = 0_u64;
+		{
+			let page = pagelock.read();
+			let mut reader = BufReader::new(page.get_data());
+			size = reader.read_le_u64().unwrap();
+		}
+		self.buffer_manager.unfix_page(pagelock, false);
+		println!("Size: {}", size);
+
+		let mut data: Vec<u8> = Vec::with_capacity(size as uint);
+		let mut read = 0;
 
 		println!("location: {}", self.location);
-		for i in range(0, self.location / buffer::PAGE_SIZE as u64 + 1) {
+		for i in range(1, self.location / buffer::PAGE_SIZE as u64 + 2) {
 			println!("Reading page {}", i);
 			let pagelock = self.buffer_manager.fix_page(i).unwrap_or_else(
 				|| fail!("Failed fixing page {}", i));
 			{
 				let page = pagelock.read();
-				data.push_all(page.get_data());
+				let content = page.get_data();
+				let mut j = 0;
+				while read < size {
+					data.push(content[j]);
+					j += 1;
+					read += 1;
+				}
 			}
 			self.buffer_manager.unfix_page(pagelock, false);
 		}
