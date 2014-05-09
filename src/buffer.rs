@@ -30,12 +30,19 @@ pub struct BufferManager {
 
 struct BufferEntry {
 	frame: Arc<RWLock<BufferFrame>>,
+	written: Cleanliness,
 }
 
 #[deriving(Eq)]
 enum Status {
 	Free,
 	Fixed(uint),
+}
+
+#[deriving(Eq)]
+enum Cleanliness {
+	Clean,
+	Dirty,
 }
 
 struct BufferFrame {
@@ -47,8 +54,16 @@ struct BufferFrame {
 /* Destructor trait implementation */
 impl Drop for BufferManager {
 	fn drop(&mut self) {
-		// TODO
-		info!("Dropping");
+		for (page, entry) in self.entries.iter() {
+			info!("Drop k == {}, dirty? {:?}", page, entry.written);
+			match entry.written {
+				Clean => (),
+				Dirty => {
+					let frame = entry.frame.read();
+					self.write_page(frame.page_id, frame.get_data());
+				},
+			}
+		}
 	}
 }
 
@@ -116,7 +131,7 @@ impl BufferManager {
 		};
 
 		let frame = BufferFrame {data: content, page_id: page_id, fixed: Free};
-		let entry = BufferEntry {frame: Arc::new(RWLock::new(frame))};
+		let entry = BufferEntry {frame: Arc::new(RWLock::new(frame)), written: Clean};
 		self.entries.insert(page_id, entry);
 		true
 	}
@@ -143,7 +158,19 @@ impl BufferManager {
 
 		match random_key {
 			None => false,
-			Some(key) => self.entries.remove(&key),
+			Some(key) => {
+				match self.entries.pop(&key) {
+					None => false,
+					Some(entry) => {
+						info!("Evicting entry: {:?}", entry);
+						if entry.written == Dirty {
+							let frame = entry.frame.read();
+							self.write_page(frame.page_id, frame.get_data());
+						}
+						true
+					},
+				}
+			},
 		}
 	}
 	
@@ -175,17 +202,14 @@ impl BufferManager {
 			};
 		}
 
-		if !is_dirty {
-			return;
-		}
-		let frame = frame.read();
-		if frame.fixed == Free {
-			//info!("writing back page \\#{}", frame.page_id);
-			self.write_page(frame.page_id, frame.get_data());
+		if is_dirty {
+			let frame = frame.read();
+			let mut entry = self.entries.get_mut(&frame.page_id);
+			entry.written = Dirty;
 		}
 	}
 
-	fn write_page(&mut self, page_id: u64, data: &[u8]) {
+	fn write_page(&self, page_id: u64, data: &[u8]) {
 		let (segment, offset) = split_segment(page_id);
 		let file_path = self.path.join(segment.to_str());
 		let mut handle = match file::open(&file_path.to_c_str(), Open, Write) {
