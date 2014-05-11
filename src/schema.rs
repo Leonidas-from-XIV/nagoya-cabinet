@@ -281,15 +281,15 @@ impl SlottedPage {
 		bw.write_le_uint(self.header.free_space);
 	}
 
-	fn try_insert(&mut self, r: &Record) -> bool {
-		false
+	fn try_insert(&mut self, r: &Record) -> (bool, uint) {
+		(false, 0)
 	}
 }
 
 
 struct TID {
 	page_id: u64,
-	slot_id: u64,
+	slot_id: uint,
 }
 
 fn join_segment(segment: u64, page: u64) -> u64{
@@ -297,20 +297,22 @@ fn join_segment(segment: u64, page: u64) -> u64{
 }
 
 impl<'a> SPSegment<'a> {
-	pub fn insert(&mut self, r: Record) -> TID {
+	pub fn insert(&mut self, r: &Record) -> TID {
+		let mut tid = TID {page_id: 0, slot_id: 0};
 		for i in range(1, 1<<48) {
 			let pagelock = match self.manager.fix_page(join_segment(self.id, i as u64)) {
 				Some(p) => p,
 				None => fail!("Failed aquiring page {}", i),
 			};
-
-			// TODO
-			self.manager.unfix_page(pagelock, false);
-
-			break;
+			let mut sp = SlottedPage::new(pagelock.clone());
+			let (inserted, slot) = sp.try_insert(r);
+			self.manager.unfix_page(pagelock, inserted);
+			if inserted {
+				tid = TID {page_id: i as u64, slot_id: slot};
+				break;
+			}
 		}
-		// TODO
-		TID {page_id: 0, slot_id: 0}
+		tid
 	}
 
 	pub fn remove(tid: TID) -> bool {
@@ -353,5 +355,5 @@ fn slotted_page_create() {
 	let mut manager = buffer::BufferManager::new(1024, Path::new("."));
 	let mut seg = SPSegment {id: 1, manager: &mut manager};
 	let rec = Record {len: 1, data: vec!(42)};
-	let tid = seg.insert(rec);
+	let tid = seg.insert(&rec);
 }
