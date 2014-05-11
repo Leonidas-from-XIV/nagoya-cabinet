@@ -7,6 +7,8 @@ extern crate serialize;
 use std::cmp::min;
 use std::io::{IoResult, IoError, InvalidInput, SeekStyle, BufWriter, BufReader};
 use std::io::{SeekSet, SeekEnd, SeekCur};
+use std::mem::size_of;
+use sync::{Arc, RWLock};
 use serialize::ebml::{reader,writer};
 use serialize::{Encodable, Decodable};
 mod buffer;
@@ -222,14 +224,93 @@ impl Record {
 	}
 }
 
-struct SPSegment;
+struct SPSegment<'a> {
+	id: u64,
+	manager: &'a mut buffer::BufferManager,
+}
 
-/* our newtype struct: create a TID type as an alias to another type */
-struct TID(u8);
+struct SlottedPageHeader {
+	slot_count: uint,
+	free_slot: uint,
+	data_start: uint,
+	free_space: uint,
+}
 
-impl SPSegment {
-	pub fn insert(r: Record) -> TID {
-		TID(0)
+struct Slot((uint, uint));
+
+struct SlottedPage {
+	header: SlottedPageHeader,
+	frame: Arc<RWLock<buffer::BufferFrame>>,
+}
+
+impl SlottedPage {
+	pub fn new(frame: Arc<RWLock<buffer::BufferFrame>>) -> SlottedPage {
+		let header = {
+			let mut frame = frame.write();
+			let mut br = BufReader::new(frame.get_data());
+			let slot_count = br.read_le_uint().unwrap();
+			let free_slot = br.read_le_uint().unwrap();
+			let data_start = br.read_le_uint().unwrap();
+			let free_space = br.read_le_uint().unwrap();
+
+			if slot_count == 0 && free_space == 0 {
+				// blank frame, construct header
+				let slot_count = 0;
+				let free_slot = 0;
+				let data_start = buffer::PAGE_SIZE;
+				let free_space = buffer::PAGE_SIZE - size_of::<SlottedPageHeader>();
+				SlottedPageHeader {slot_count: slot_count,
+					free_slot: free_slot, data_start: data_start,
+					free_space: free_space}
+			} else {
+				SlottedPageHeader {slot_count: slot_count,
+					free_slot: free_slot, data_start: data_start,
+					free_space: free_space}
+			}
+
+		};
+		SlottedPage {frame: frame, header: header}
+	}
+
+	fn write_header(&mut self) {
+		let mut frame = self.frame.write();
+		let mut bw = BufWriter::new(frame.get_mut_data());
+		bw.write_le_uint(self.header.slot_count);
+		bw.write_le_uint(self.header.free_slot);
+		bw.write_le_uint(self.header.data_start);
+		bw.write_le_uint(self.header.free_space);
+	}
+
+	fn try_insert(&mut self, r: &Record) -> bool {
+		false
+	}
+}
+
+
+struct TID {
+	page_id: u64,
+	slot_id: u64,
+}
+
+fn join_segment(segment: u64, page: u64) -> u64{
+	(segment << 48) & page
+}
+
+impl<'a> SPSegment<'a> {
+	pub fn insert(&mut self, r: Record) -> TID {
+		for i in range(1, 1<<48) {
+			let pagelock = match self.manager.fix_page(join_segment(self.id, i as u64)) {
+				Some(p) => p,
+				None => fail!("Failed aquiring page {}", i),
+			};
+
+			// TODO
+			self.manager.unfix_page(pagelock, false);
+
+			break;
+		}
+		// TODO
+		TID {page_id: 0, slot_id: 0}
 	}
 
 	pub fn remove(tid: TID) -> bool {
@@ -245,7 +326,6 @@ impl SPSegment {
 		false
 	}
 }
-
 
 #[test]
 fn main() {
@@ -266,4 +346,12 @@ fn create_schema() {
 	let new_schema = Schema::new_from_disk(&mut manager);
 	println!("new_schema == {:?}", new_schema);
 	assert!(false);
+}
+
+#[test]
+fn slotted_page_create() {
+	let mut manager = buffer::BufferManager::new(1024, Path::new("."));
+	let mut seg = SPSegment {id: 1, manager: &mut manager};
+	let rec = Record {len: 1, data: vec!(42)};
+	let tid = seg.insert(rec);
 }

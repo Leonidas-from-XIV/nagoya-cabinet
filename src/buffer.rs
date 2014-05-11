@@ -45,7 +45,7 @@ enum Cleanliness {
 	Dirty,
 }
 
-struct BufferFrame {
+pub struct BufferFrame {
 	page_id: u64,
 	data: Vec<u8>,
 	fixed: Status,
