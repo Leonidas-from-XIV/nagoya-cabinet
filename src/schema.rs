@@ -236,7 +236,7 @@ struct SlottedPageHeader {
 	free_space: uint,
 }
 
-struct Slot((uint, uint));
+struct Slot(uint, uint);
 
 struct SlottedPage {
 	header: SlottedPageHeader,
@@ -269,6 +269,7 @@ impl SlottedPage {
 			}
 
 		};
+		println!("SlottedPageHeader: {:?}", header);
 		SlottedPage {frame: frame, header: header}
 	}
 
@@ -282,7 +283,36 @@ impl SlottedPage {
 	}
 
 	fn try_insert(&mut self, r: &Record) -> (bool, uint) {
-		(false, 0)
+		println!("s.h.free_space {}", self.header.free_space);
+		if self.header.free_space < r.len {
+			return (false, 0)
+		}
+		// copy data from record to page
+		self.header.data_start -= r.len;
+		self.header.free_space -= r.len;
+		let slot = Slot(self.header.data_start, r.len);
+		{
+			let mut frame = self.frame.write();
+			let mut bw = BufWriter::new(frame.get_mut_data());
+			// seek to place where we can store data
+			bw.seek(self.header.data_start as i64, SeekSet);
+			// copy it over from record
+			bw.write(r.get_data());
+			// seek to beginning of slot storage
+			bw.seek((size_of::<SlottedPageHeader>() +
+				self.header.slot_count * size_of::<Slot>()) as i64,
+				SeekSet);
+			// write out slot
+			let Slot(offset, len) = slot;
+			bw.write_le_uint(offset);
+			bw.write_le_uint(len);
+		}
+		let res = (true, self.header.slot_count);
+		self.header.free_slot += 1;
+		self.header.slot_count += 1;
+
+		self.write_header();
+		res
 	}
 }
 
@@ -299,18 +329,22 @@ fn join_segment(segment: u64, page: u64) -> u64{
 impl<'a> SPSegment<'a> {
 	pub fn insert(&mut self, r: &Record) -> TID {
 		let mut tid = TID {page_id: 0, slot_id: 0};
+		println!("inserting")
 		for i in range(1, 1<<48) {
+			println!("Testing {}", i);
 			let pagelock = match self.manager.fix_page(join_segment(self.id, i as u64)) {
 				Some(p) => p,
 				None => fail!("Failed aquiring page {}", i),
 			};
 			let mut sp = SlottedPage::new(pagelock.clone());
 			let (inserted, slot) = sp.try_insert(r);
+			println!("try_insert: {}", inserted);
 			self.manager.unfix_page(pagelock, inserted);
 			if inserted {
 				tid = TID {page_id: i as u64, slot_id: slot};
 				break;
 			}
+			break;
 		}
 		tid
 	}
@@ -356,4 +390,6 @@ fn slotted_page_create() {
 	let mut seg = SPSegment {id: 1, manager: &mut manager};
 	let rec = Record {len: 1, data: vec!(42)};
 	let tid = seg.insert(&rec);
+	println!("TID: {:?}", tid);
+	assert!(false);
 }
