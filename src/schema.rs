@@ -341,6 +341,19 @@ impl SlottedPage {
 		// TODO
 		(false, false)
 	}
+
+	fn remove(&self, slot_id: uint) -> (bool, bool) {
+		let mut frame = self.frame.write();
+		let mut bw = BufWriter::new(frame.get_mut_data());
+		bw.seek((size_of::<SlottedPageHeader>() + slot_id * size_of::<Slot>()) as i64,
+			SeekSet);
+		// zero out the slot
+		bw.write_le_uint(0);
+		bw.write_le_uint(0);
+		// TODO: update self.header.free_slot
+		// done
+		(true, true)
+	}
 }
 
 
@@ -376,8 +389,9 @@ impl<'a> SPSegment<'a> {
 		tid
 	}
 
-	pub fn remove(&self, tid: TID) -> bool {
-		false
+	pub fn remove(&mut self, tid: TID) -> bool {
+		let slot_id = tid.slot_id;
+		self.with_slotted_page(tid, |sp| sp.remove(slot_id))
 	}
 
 	/*
