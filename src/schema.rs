@@ -316,7 +316,7 @@ impl SlottedPage {
 		res
 	}
 
-	fn lookup(&self, slot_id: uint) -> Record {
+	fn lookup(&self, slot_id: uint) -> (bool, Record) {
 		let frame = self.frame.read();
 		let mut br = BufReader::new(frame.get_data());
 		// move to slot position
@@ -334,7 +334,12 @@ impl SlottedPage {
 		};
 		// construct and return a record from that data
 		let v = Vec::from_slice(content);
-		Record {len: len, data: v}
+		(false, Record {len: len, data: v})
+	}
+
+	fn update(&self, slot_id: uint, r: &Record) -> (bool, bool) {
+		// TODO
+		(false, false)
 	}
 }
 
@@ -375,19 +380,33 @@ impl<'a> SPSegment<'a> {
 		false
 	}
 
-	pub fn lookup(&mut self, tid: TID) -> Record {
+	/*
+	 * fix a page, create slotted page, call the closure with that slotted
+	 * page and unfix that page
+	 */
+	fn with_slotted_page<T>(&mut self, tid: TID, f: |SlottedPage| -> (bool, T)) -> T {
 		let page_id = tid.page_id;
-		let slot_id = tid.slot_id;
-		let pagelock = match self.manager.fix_page(join_segment(self.id, page_id)) {
+		let full_page_id = join_segment(self.id, page_id);
+		let pagelock = match self.manager.fix_page(full_page_id) {
 			Some(p) => p,
 			None => fail!("Failed looking up page {}", page_id),
 		};
-		let sp = SlottedPage::new(pagelock.clone());
-		sp.lookup(slot_id)
+		let (wrote, result) = {
+			let sp = SlottedPage::new(pagelock.clone());
+			f(sp)
+		};
+		self.manager.unfix_page(pagelock, wrote);
+		result
 	}
 
-	pub fn update(&self, tid: TID, r: Record) -> bool {
-		false
+	pub fn lookup(&mut self, tid: TID) -> Record {
+		let slot_id = tid.slot_id;
+		self.with_slotted_page(tid, |sp| sp.lookup(slot_id))
+	}
+
+	pub fn update(&mut self, tid: TID, r: &Record) -> bool {
+		let slot_id = tid.slot_id;
+		self.with_slotted_page(tid, |sp| sp.update(slot_id, r))
 	}
 }
 
@@ -421,5 +440,8 @@ fn slotted_page_create() {
 	println!("TID: {:?}", tid);
 	let rec2 = seg.lookup(tid);
 	println!("Record: {}", rec2.data);
+	let rec3 = Record {len: 2, data: vec!(42, 42)};
+	seg.update(tid, &rec3);
+	seg.remove(tid);
 	assert!(false);
 }
