@@ -287,9 +287,10 @@ impl SlottedPage {
 		if self.header.free_space < r.len {
 			return (false, 0)
 		}
-		// copy data from record to page
+		// adjust the new start of data to be more to the frone
 		self.header.data_start -= r.len;
-		self.header.free_space -= r.len;
+		// we added the data plus one slot, reduce free space
+		self.header.free_space -= r.len + size_of::<Slot>();
 		let slot = Slot(self.header.data_start, r.len);
 		{
 			let mut frame = self.frame.write();
@@ -323,14 +324,14 @@ struct TID {
 }
 
 fn join_segment(segment: u64, page: u64) -> u64{
-	(segment << 48) & page
+	(segment << buffer::PAGE_BITS) | page
 }
 
 impl<'a> SPSegment<'a> {
 	pub fn insert(&mut self, r: &Record) -> TID {
 		let mut tid = TID {page_id: 0, slot_id: 0};
 		println!("inserting")
-		for i in range(1, 1<<48) {
+		for i in range(0, 1<<buffer::PAGE_BITS) {
 			println!("Testing {}", i);
 			let pagelock = match self.manager.fix_page(join_segment(self.id, i as u64)) {
 				Some(p) => p,
