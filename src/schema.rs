@@ -315,6 +315,27 @@ impl SlottedPage {
 		self.write_header();
 		res
 	}
+
+	fn lookup(&self, slot_id: uint) -> Record {
+		let frame = self.frame.read();
+		let mut br = BufReader::new(frame.get_data());
+		// move to slot position
+		br.seek((size_of::<SlottedPageHeader>() + slot_id * size_of::<Slot>()) as i64,
+			SeekSet);
+		// read offset and length of slot_id
+		let offset = br.read_le_uint().unwrap();
+		let len = br.read_le_uint().unwrap();
+		// jump to that offset
+		br.seek(offset as i64, SeekSet);
+		// read length of data from there
+		let content = match br.read_exact(len) {
+			Ok(c) => c,
+			Err(e) => fail!("Failed reading from segmented page, {}", e),
+		};
+		// construct and return a record from that data
+		let v = Vec::from_slice(content);
+		Record {len: len, data: v}
+	}
 }
 
 
@@ -350,16 +371,22 @@ impl<'a> SPSegment<'a> {
 		tid
 	}
 
-	pub fn remove(tid: TID) -> bool {
+	pub fn remove(&self, tid: TID) -> bool {
 		false
 	}
 
-	pub fn lookup(tid: TID) -> Record {
-		// TODO
-		Record {len: 1, data: vec!(1)}
+	pub fn lookup(&mut self, tid: TID) -> Record {
+		let page_id = tid.page_id;
+		let slot_id = tid.slot_id;
+		let pagelock = match self.manager.fix_page(join_segment(self.id, page_id)) {
+			Some(p) => p,
+			None => fail!("Failed looking up page {}", page_id),
+		};
+		let sp = SlottedPage::new(pagelock.clone());
+		sp.lookup(slot_id)
 	}
 
-	pub fn update(tid: TID, r: Record) -> bool {
+	pub fn update(&self, tid: TID, r: Record) -> bool {
 		false
 	}
 }
@@ -392,5 +419,7 @@ fn slotted_page_create() {
 	let rec = Record {len: 1, data: vec!(42)};
 	let tid = seg.insert(&rec);
 	println!("TID: {:?}", tid);
+	let rec2 = seg.lookup(tid);
+	println!("Record: {}", rec2.data);
 	assert!(false);
 }
