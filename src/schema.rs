@@ -332,7 +332,7 @@ impl SlottedPage {
 
 	fn try_insert(&mut self, r: &Record) -> (bool, uint) {
 		println!("s.h.free_space {}", self.header.free_space);
-		if self.header.free_space < r.len {
+		if self.header.free_space < r.len + size_of::<Slot>() {
 			return (false, 0)
 		}
 		// adjust the new start of data to be more to the frone
@@ -403,7 +403,6 @@ impl SlottedPage {
 			SeekSet);
 		// zero out the slot
 		bw.write_le_u64(Slot::empty().as_u64());
-		// TODO: update self.header.free_slot
 		// done
 		(true, true)
 	}
