@@ -380,7 +380,7 @@ impl SlottedPage {
 			// write out slot
 			bw.write_le_u64(slot.as_u64());
 		}
-		let res = (true, self.header.slot_count);
+		let res = (true, self.header.free_slot);
 		self.header.free_slot += 1;
 		self.header.slot_count += 1;
 
