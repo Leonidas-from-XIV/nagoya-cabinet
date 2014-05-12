@@ -247,7 +247,6 @@ struct Slot(u64);
 
 impl Slot {
 	fn new(data: u64) -> Slot {
-		assert!(data < 1<<48);
 		Slot(data)
 	}
 
@@ -269,7 +268,9 @@ impl Slot {
 
 	fn offset(&self) -> uint {
 		let &Slot(n) = self;
-		(n >> 24) as uint
+		// mask out the high bits
+		let mask = (1 << 24) - 1;
+		((n >> 24) & mask) as uint
 	}
 
 	fn len(&self) -> uint {
@@ -402,9 +403,30 @@ impl SlottedPage {
 		(false, Direct(Record {len: slot.len(), data: v}))
 	}
 
-	fn update(&self, slot_id: uint, r: &Record) -> (bool, bool) {
+	fn update(&self, old_tid: TID, new_tid: TID) -> (bool, bool) {
 		// TODO
-		(false, false)
+		// check if old record has same size
+		let slot_id = old_tid.slot_id();
+		let slot = {
+			let frame = self.frame.read();
+			let mut br = BufReader::new(frame.get_data());
+			br.seek((size_of::<SlottedPageHeader>() + slot_id * size_of::<Slot>()) as i64,
+				SeekSet);
+			Slot::new(br.read_le_u64().unwrap())
+		};
+		if slot.is_tid() {
+			// TODO:
+			// remove the old updated record
+			return (false, false)
+		}
+		let new_slot = Slot::new_from_tid(new_tid);
+
+		let mut frame = self.frame.write();
+		let mut bw = BufWriter::new(frame.get_mut_data());
+		bw.seek((size_of::<SlottedPageHeader>() + slot_id * size_of::<Slot>()) as i64,
+			SeekSet);
+		bw.write_le_u64(new_slot.as_u64());
+		(true, true)
 	}
 
 	fn remove(&self, slot_id: uint) -> (bool, bool) {
@@ -517,8 +539,9 @@ impl<'a> SPSegment<'a> {
 	}
 
 	pub fn update(&mut self, tid: TID, r: &Record) -> bool {
-		let slot_id = tid.slot_id();
-		self.with_slotted_page(tid, |sp| sp.update(slot_id, r))
+		let new_tid = self.insert(r);
+
+		self.with_slotted_page(tid, |sp| sp.update(tid, new_tid))
 	}
 }
 
@@ -557,8 +580,10 @@ fn slotted_page_create() {
 		reconstructed_tid == tid);
 	let rec2 = seg.lookup(tid);
 	println!("Record: {}", rec2.data);
-	let rec3 = Record {len: 2, data: vec!(42, 42)};
+	let rec3 = Record {len: 2, data: vec!(23, 42)};
 	seg.update(tid, &rec3);
+	let rec4 = seg.lookup(tid);
+	println!("Record (rec4): {}", rec4.data);
 	seg.remove(tid);
 	assert!(false);
 }
