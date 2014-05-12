@@ -26,6 +26,11 @@ enum SqlAttribute {
 	NotNull,
 }
 
+enum LookupResult {
+	Direct(Record),
+	Indirect(TID),
+}
+
 #[deriving(Encodable, Decodable)]
 struct Column {
 	name: ~str,
@@ -238,6 +243,26 @@ struct SlottedPageHeader {
 
 struct Slot(uint, uint);
 
+impl Slot {
+	fn offset(&self) -> uint {
+		let &Slot(o, _) = self;
+		o
+	}
+
+	fn len(&self) -> uint {
+		let &Slot(_, l) = self;
+		l
+	}
+
+	fn is_tid(&self) -> bool {
+		false
+	}
+
+	fn as_tid(&self) -> TID {
+		fail!("fail")
+	}
+}
+
 struct SlottedPage {
 	header: SlottedPageHeader,
 	frame: Arc<RWLock<buffer::BufferFrame>>,
@@ -316,7 +341,7 @@ impl SlottedPage {
 		res
 	}
 
-	fn lookup(&self, slot_id: uint) -> (bool, Record) {
+	fn lookup(&self, slot_id: uint) -> (bool, LookupResult) {
 		let frame = self.frame.read();
 		let mut br = BufReader::new(frame.get_data());
 		// move to slot position
@@ -325,16 +350,23 @@ impl SlottedPage {
 		// read offset and length of slot_id
 		let offset = br.read_le_uint().unwrap();
 		let len = br.read_le_uint().unwrap();
-		// jump to that offset
-		br.seek(offset as i64, SeekSet);
-		// read length of data from there
-		let content = match br.read_exact(len) {
-			Ok(c) => c,
-			Err(e) => fail!("Failed reading from segmented page, {}", e),
-		};
-		// construct and return a record from that data
-		let v = Vec::from_slice(content);
-		(false, Record {len: len, data: v})
+		let slot = Slot(offset, len);
+
+		if slot.is_tid() {
+			let new_tid = slot.as_tid();
+			(false, Indirect(new_tid))
+		} else {
+			// jump to that offset
+			br.seek(slot.offset() as i64, SeekSet);
+			// read length of data from there
+			let content = match br.read_exact(slot.len()) {
+				Ok(c) => c,
+				Err(e) => fail!("Failed reading from segmented page, {}", e),
+			};
+			// construct and return a record from that data
+			let v = Vec::from_slice(content);
+			(false, Direct(Record {len: len, data: v}))
+		}
 	}
 
 	fn update(&self, slot_id: uint, r: &Record) -> (bool, bool) {
@@ -360,6 +392,16 @@ impl SlottedPage {
 struct TID {
 	page_id: u64,
 	slot_id: uint,
+}
+
+impl TID {
+	fn page_id(&self) -> u64 {
+		self.page_id
+	}
+
+	fn slot_id(&self) -> uint {
+		self.slot_id
+	}
 }
 
 fn join_segment(segment: u64, page: u64) -> u64{
@@ -399,7 +441,7 @@ impl<'a> SPSegment<'a> {
 	 * page and unfix that page
 	 */
 	fn with_slotted_page<T>(&mut self, tid: TID, f: |SlottedPage| -> (bool, T)) -> T {
-		let page_id = tid.page_id;
+		let page_id = tid.page_id();
 		let full_page_id = join_segment(self.id, page_id);
 		let pagelock = match self.manager.fix_page(full_page_id) {
 			Some(p) => p,
@@ -414,8 +456,21 @@ impl<'a> SPSegment<'a> {
 	}
 
 	pub fn lookup(&mut self, tid: TID) -> Record {
-		let slot_id = tid.slot_id;
-		self.with_slotted_page(tid, |sp| sp.lookup(slot_id))
+		let slot_id = tid.slot_id();
+		match self.with_slotted_page(tid, |sp| sp.lookup(slot_id)) {
+			Direct(record) => record,
+			Indirect(tid) => {
+				let slot_id = tid.slot_id();
+				match self.with_slotted_page(tid, |sp| sp.lookup(slot_id)) {
+					Indirect(_) => fail!("Multi-level indirections not supported"),
+					Direct(record) => {
+						// TODO: split of 8 bytes containing
+						// original TID
+						record
+					}
+				}
+			}
+		}
 	}
 
 	pub fn update(&mut self, tid: TID, r: &Record) -> bool {
