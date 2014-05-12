@@ -20,7 +20,7 @@ pub static PAGE_SIZE: uint = 4 * 1024;
  *
  * Adjust as required.
  */
-pub static PAGE_BITS: uint = 48;
+pub static PAGE_BITS: uint = 32;
 
 pub struct BufferManager {
 	size: uint,

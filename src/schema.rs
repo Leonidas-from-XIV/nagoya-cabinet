@@ -13,6 +13,8 @@ use serialize::ebml::{reader,writer};
 use serialize::{Encodable, Decodable};
 mod buffer;
 
+pub static SLOT_BITS: uint = 16;
+
 #[deriving(Encodable, Decodable)]
 enum SqlType {
 	Char(uint),
@@ -389,23 +391,24 @@ impl SlottedPage {
 	}
 }
 
-
-struct TID {
-	page_id: u64,
-	slot_id: uint,
-}
+struct TID(u64);
 
 impl TID {
 	fn new(page_id: u64, slot_id: uint) -> TID {
-		TID {page_id: page_id, slot_id: slot_id}
+		assert!(page_id < 1<<32);
+		assert!(slot_id < 1<<16);
+		TID(page_id << 16 | slot_id as u64)
 	}
 
 	fn page_id(&self) -> u64 {
-		self.page_id
+		let &TID(n) = self;
+		n >> 16
 	}
 
 	fn slot_id(&self) -> uint {
-		self.slot_id
+		let &TID(n) = self;
+		// slot id is 16 bit max
+		(n as u16) as uint
 	}
 }
 
@@ -428,11 +431,10 @@ impl<'a> SPSegment<'a> {
 			self.manager.unfix_page(pagelock, inserted);
 			if inserted {
 				return TID::new(i as u64, slot);
-				break;
 			}
 			break;
 		}
-		TID::new(0, 0);
+		TID::new(0, 0)
 	}
 
 	pub fn remove(&mut self, tid: TID) -> bool {
@@ -478,7 +480,7 @@ impl<'a> SPSegment<'a> {
 	}
 
 	pub fn update(&mut self, tid: TID, r: &Record) -> bool {
-		let slot_id = tid.slot_id;
+		let slot_id = tid.slot_id();
 		self.with_slotted_page(tid, |sp| sp.update(slot_id, r))
 	}
 }
