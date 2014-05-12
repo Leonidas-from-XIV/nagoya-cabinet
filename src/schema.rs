@@ -353,20 +353,20 @@ impl SlottedPage {
 		let slot = Slot(offset, len);
 
 		if slot.is_tid() {
-			let new_tid = slot.as_tid();
-			(false, Indirect(new_tid))
-		} else {
-			// jump to that offset
-			br.seek(slot.offset() as i64, SeekSet);
-			// read length of data from there
-			let content = match br.read_exact(slot.len()) {
-				Ok(c) => c,
-				Err(e) => fail!("Failed reading from segmented page, {}", e),
-			};
-			// construct and return a record from that data
-			let v = Vec::from_slice(content);
-			(false, Direct(Record {len: len, data: v}))
+			// the slot contains a TID, not an (offset, len)
+			return (false, Indirect(slot.as_tid()))
 		}
+
+		// jump to that offset
+		br.seek(slot.offset() as i64, SeekSet);
+		// read length of data from there
+		let content = match br.read_exact(slot.len()) {
+			Ok(c) => c,
+			Err(e) => fail!("Failed reading from segmented page, {}", e),
+		};
+		// construct and return a record from that data
+		let v = Vec::from_slice(content);
+		(false, Direct(Record {len: len, data: v}))
 	}
 
 	fn update(&self, slot_id: uint, r: &Record) -> (bool, bool) {
@@ -376,6 +376,7 @@ impl SlottedPage {
 
 	fn remove(&self, slot_id: uint) -> (bool, bool) {
 		let mut frame = self.frame.write();
+		// TODO: check for moved slot first
 		let mut bw = BufWriter::new(frame.get_mut_data());
 		bw.seek((size_of::<SlottedPageHeader>() + slot_id * size_of::<Slot>()) as i64,
 			SeekSet);
@@ -395,6 +396,10 @@ struct TID {
 }
 
 impl TID {
+	fn new(page_id: u64, slot_id: uint) -> TID {
+		TID {page_id: page_id, slot_id: slot_id}
+	}
+
 	fn page_id(&self) -> u64 {
 		self.page_id
 	}
@@ -410,7 +415,6 @@ fn join_segment(segment: u64, page: u64) -> u64{
 
 impl<'a> SPSegment<'a> {
 	pub fn insert(&mut self, r: &Record) -> TID {
-		let mut tid = TID {page_id: 0, slot_id: 0};
 		println!("inserting")
 		for i in range(0, 1<<buffer::PAGE_BITS) {
 			println!("Testing {}", i);
@@ -423,16 +427,16 @@ impl<'a> SPSegment<'a> {
 			println!("try_insert: {}", inserted);
 			self.manager.unfix_page(pagelock, inserted);
 			if inserted {
-				tid = TID {page_id: i as u64, slot_id: slot};
+				return TID::new(i as u64, slot);
 				break;
 			}
 			break;
 		}
-		tid
+		TID::new(0, 0);
 	}
 
 	pub fn remove(&mut self, tid: TID) -> bool {
-		let slot_id = tid.slot_id;
+		let slot_id = tid.slot_id();
 		self.with_slotted_page(tid, |sp| sp.remove(slot_id))
 	}
 
