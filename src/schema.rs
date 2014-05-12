@@ -28,9 +28,22 @@ enum SqlAttribute {
 	NotNull,
 }
 
+/*
+ * a lookup might either return a record directly or return a TID which has to be
+ * followed to the proper place
+ */
 enum LookupResult {
 	Direct(Record),
 	Indirect(TID),
+}
+
+/*
+ * A remove operation might either succeed directly or succeed but return another
+ * entry that also has to be deleted because it pointed to it.
+ */
+enum DeleteResult {
+	DeleteDone,
+	DeleteCascade(TID),
 }
 
 #[deriving(Encodable, Decodable)]
@@ -362,7 +375,7 @@ impl SlottedPage {
 			bw.write(r.get_data());
 			// seek to beginning of slot storage
 			bw.seek((size_of::<SlottedPageHeader>() +
-				self.header.slot_count * size_of::<Slot>()) as i64,
+				self.header.free_slot * size_of::<Slot>()) as i64,
 				SeekSet);
 			// write out slot
 			bw.write_le_u64(slot.as_u64());
@@ -429,16 +442,35 @@ impl SlottedPage {
 		(true, true)
 	}
 
-	fn remove(&self, slot_id: uint) -> (bool, bool) {
-		let mut frame = self.frame.write();
-		// TODO: check for moved slot first
-		let mut bw = BufWriter::new(frame.get_mut_data());
-		bw.seek((size_of::<SlottedPageHeader>() + slot_id * size_of::<Slot>()) as i64,
-			SeekSet);
-		// zero out the slot
-		bw.write_le_u64(Slot::empty().as_u64());
-		// done
-		(true, true)
+	fn remove(&mut self, slot_id: uint) -> (bool, DeleteResult) {
+		let slot = {
+			let frame = self.frame.read();
+			let mut br = BufReader::new(frame.get_data());
+			br.seek((size_of::<SlottedPageHeader>() + slot_id * size_of::<Slot>()) as i64,
+				SeekSet);
+			Slot::new(br.read_le_u64().unwrap())
+		};
+		println!("Removing slot_id {}, {:?}, is_tid? {}", slot_id, slot, slot.is_tid());
+
+		{
+			let mut frame = self.frame.write();
+			let mut bw = BufWriter::new(frame.get_mut_data());
+			bw.seek((size_of::<SlottedPageHeader>() + slot_id * size_of::<Slot>()) as i64,
+				SeekSet);
+			// zero out the slot
+			bw.write_le_u64(Slot::empty().as_u64());
+		}
+		self.header.slot_count -= 1;
+		self.write_header();
+
+		if slot.is_tid() {
+			// this entry linked to another TID, tell the called to remove
+			// it as well
+			(true, DeleteCascade(slot.as_tid()))
+		} else {
+			// this was a leaf node, we're done deleting
+			(true, DeleteDone)
+		}
 	}
 }
 
@@ -498,7 +530,10 @@ impl<'a> SPSegment<'a> {
 
 	pub fn remove(&mut self, tid: TID) -> bool {
 		let slot_id = tid.slot_id();
-		self.with_slotted_page(tid, |sp| sp.remove(slot_id))
+		match self.with_slotted_page(tid, |mut sp| sp.remove(slot_id)) {
+			DeleteDone => true,
+			DeleteCascade(tid) => self.remove(tid),
+		}
 	}
 
 	/*
@@ -539,8 +574,8 @@ impl<'a> SPSegment<'a> {
 	}
 
 	pub fn update(&mut self, tid: TID, r: &Record) -> bool {
+		// TODO: prepend old tid to record
 		let new_tid = self.insert(r);
-
 		self.with_slotted_page(tid, |sp| sp.update(tid, new_tid))
 	}
 }
