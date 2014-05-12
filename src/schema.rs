@@ -420,6 +420,7 @@ impl SlottedPage {
 	}
 }
 
+#[deriving(Eq)]
 struct TID(u64);
 
 impl TID {
@@ -552,7 +553,8 @@ fn slotted_page_create() {
 	let slot = Slot::new_from_tid(tid);
 	println!("Slot: {:?}, was TID? {}", slot, slot.is_tid());
 	let reconstructed_tid = slot.as_tid();
-	println!("reconstructed TID: {:?}", reconstructed_tid);
+	println!("reconstructed TID: {:?} correct? {}", reconstructed_tid,
+		reconstructed_tid == tid);
 	let rec2 = seg.lookup(tid);
 	println!("Record: {}", rec2.data);
 	let rec3 = Record {len: 2, data: vec!(42, 42)};
