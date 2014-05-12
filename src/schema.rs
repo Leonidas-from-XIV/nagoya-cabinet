@@ -243,17 +243,33 @@ struct SlottedPageHeader {
 	free_space: uint,
 }
 
-struct Slot(uint, uint);
+struct Slot(u64);
 
 impl Slot {
+	fn new(data: u64) -> Slot {
+		assert!(data < 1<<48);
+		Slot(data)
+	}
+
+	fn empty() -> Slot {
+		Slot(0)
+	}
+
+	fn new_from_offset_len(offset: uint, len: uint) -> Slot {
+		assert!(offset < 1<<24);
+		assert!(len < 1<<24);
+		Slot(offset as u64 << 24 | len as u64)
+	}
+
 	fn offset(&self) -> uint {
-		let &Slot(o, _) = self;
-		o
+		let &Slot(n) = self;
+		(n >> 24) as uint
 	}
 
 	fn len(&self) -> uint {
-		let &Slot(_, l) = self;
-		l
+		let &Slot(n) = self;
+		let mask = (1 << 24) - 1;
+		(n & mask) as uint
 	}
 
 	fn is_tid(&self) -> bool {
@@ -262,6 +278,11 @@ impl Slot {
 
 	fn as_tid(&self) -> TID {
 		fail!("fail")
+	}
+
+	fn as_u64(&self) -> u64 {
+		let &Slot(n) = self;
+		n
 	}
 }
 
@@ -318,7 +339,7 @@ impl SlottedPage {
 		self.header.data_start -= r.len;
 		// we added the data plus one slot, reduce free space
 		self.header.free_space -= r.len + size_of::<Slot>();
-		let slot = Slot(self.header.data_start, r.len);
+		let slot = Slot::new_from_offset_len(self.header.data_start, r.len);
 		{
 			let mut frame = self.frame.write();
 			let mut bw = BufWriter::new(frame.get_mut_data());
@@ -331,9 +352,7 @@ impl SlottedPage {
 				self.header.slot_count * size_of::<Slot>()) as i64,
 				SeekSet);
 			// write out slot
-			let Slot(offset, len) = slot;
-			bw.write_le_uint(offset);
-			bw.write_le_uint(len);
+			bw.write_le_u64(slot.as_u64());
 		}
 		let res = (true, self.header.slot_count);
 		self.header.free_slot += 1;
@@ -350,9 +369,8 @@ impl SlottedPage {
 		br.seek((size_of::<SlottedPageHeader>() + slot_id * size_of::<Slot>()) as i64,
 			SeekSet);
 		// read offset and length of slot_id
-		let offset = br.read_le_uint().unwrap();
-		let len = br.read_le_uint().unwrap();
-		let slot = Slot(offset, len);
+		let slot_data = br.read_le_u64().unwrap();
+		let slot = Slot::new(slot_data);
 
 		if slot.is_tid() {
 			// the slot contains a TID, not an (offset, len)
@@ -362,13 +380,14 @@ impl SlottedPage {
 		// jump to that offset
 		br.seek(slot.offset() as i64, SeekSet);
 		// read length of data from there
+		println!("Reading {} from offset {}", slot.len(), slot.offset());
 		let content = match br.read_exact(slot.len()) {
 			Ok(c) => c,
 			Err(e) => fail!("Failed reading from segmented page, {}", e),
 		};
 		// construct and return a record from that data
 		let v = Vec::from_slice(content);
-		(false, Direct(Record {len: len, data: v}))
+		(false, Direct(Record {len: slot.len(), data: v}))
 	}
 
 	fn update(&self, slot_id: uint, r: &Record) -> (bool, bool) {
@@ -383,8 +402,7 @@ impl SlottedPage {
 		bw.seek((size_of::<SlottedPageHeader>() + slot_id * size_of::<Slot>()) as i64,
 			SeekSet);
 		// zero out the slot
-		bw.write_le_uint(0);
-		bw.write_le_uint(0);
+		bw.write_le_u64(Slot::empty().as_u64());
 		// TODO: update self.header.free_slot
 		// done
 		(true, true)
@@ -397,7 +415,9 @@ impl TID {
 	fn new(page_id: u64, slot_id: uint) -> TID {
 		assert!(page_id < 1<<32);
 		assert!(slot_id < 1<<16);
-		TID(page_id << 16 | slot_id as u64)
+		let res = page_id << 16 | slot_id as u64;
+		assert!(res < 1<<48);
+		TID(res)
 	}
 
 	fn page_id(&self) -> u64 {
@@ -420,7 +440,7 @@ impl<'a> SPSegment<'a> {
 	pub fn insert(&mut self, r: &Record) -> TID {
 		println!("inserting")
 		for i in range(0, 1<<buffer::PAGE_BITS) {
-			println!("Testing {}", i);
+			println!("Testing page {} for insertion", i);
 			let pagelock = match self.manager.fix_page(join_segment(self.id, i as u64)) {
 				Some(p) => p,
 				None => fail!("Failed aquiring page {}", i),
