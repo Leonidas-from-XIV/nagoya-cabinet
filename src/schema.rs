@@ -549,6 +549,10 @@ fn slotted_page_create() {
 	let rec = Record {len: 1, data: vec!(42)};
 	let tid = seg.insert(&rec);
 	println!("TID: {:?}", tid);
+	let slot = Slot::new_from_tid(tid);
+	println!("Slot: {:?}, was TID? {}", slot, slot.is_tid());
+	let reconstructed_tid = slot.as_tid();
+	println!("reconstructed TID: {:?}", reconstructed_tid);
 	let rec2 = seg.lookup(tid);
 	println!("Record: {}", rec2.data);
 	let rec3 = Record {len: 2, data: vec!(42, 42)};
