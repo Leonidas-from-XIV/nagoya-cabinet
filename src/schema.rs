@@ -261,6 +261,12 @@ impl Slot {
 		Slot(offset as u64 << 24 | len as u64)
 	}
 
+	fn new_from_tid(tid: TID) -> Slot {
+		let TID(n) = tid;
+		let tid_marker = (0b11111111_11111111 << 48);
+		Slot(tid_marker | n)
+	}
+
 	fn offset(&self) -> uint {
 		let &Slot(n) = self;
 		(n >> 24) as uint
@@ -273,11 +279,17 @@ impl Slot {
 	}
 
 	fn is_tid(&self) -> bool {
-		false
+		let &Slot(n) = self;
+		// check if topmost 16 bit are all 1
+		(n >> 48) == 0b11111111_11111111
 	}
 
 	fn as_tid(&self) -> TID {
-		fail!("fail")
+		assert!(self.is_tid());
+		let &Slot(n) = self;
+		// delete topmost 16 bit by shifting left and back
+		let cleared = (n << 16) >> 16;
+		TID::new_from_u64(cleared)
 	}
 
 	fn as_u64(&self) -> u64 {
@@ -417,6 +429,11 @@ impl TID {
 		let res = page_id << 16 | slot_id as u64;
 		assert!(res < 1<<48);
 		TID(res)
+	}
+
+	fn new_from_u64(num: u64) -> TID {
+		assert!(num < 1<<48);
+		TID(num)
 	}
 
 	fn page_id(&self) -> u64 {
