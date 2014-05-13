@@ -357,10 +357,14 @@ impl SlottedPage {
 	fn write_header(&mut self) {
 		let mut frame = self.frame.write();
 		let mut bw = BufWriter::new(frame.get_mut_data());
-		bw.write_le_uint(self.header.slot_count);
-		bw.write_le_uint(self.header.free_slot);
-		bw.write_le_uint(self.header.data_start);
-		bw.write_le_uint(self.header.free_space);
+		match
+		bw.write_le_uint(self.header.slot_count).and_then(|_|
+		bw.write_le_uint(self.header.free_slot).and_then(|_|
+		bw.write_le_uint(self.header.data_start).and_then(|_|
+		bw.write_le_uint(self.header.free_space)))) {
+			Ok(()) => (),
+			Err(e) => fail!("Writing header failed, {}", e),
+		}
 	}
 
 	fn try_insert(&mut self, r: &Record) -> (bool, uint) {
@@ -379,9 +383,17 @@ impl SlottedPage {
 			let mut frame = self.frame.write();
 			let mut bw = BufWriter::new(frame.get_mut_data());
 			// seek to place where we can store data
-			bw.seek(self.header.data_start as i64, SeekSet);
+			match bw.seek(self.header.data_start as i64, SeekSet) {
+				Ok(()) => (),
+				Err(e) => fail!("Failed to seek to {} while trying to insert, {}",
+					self.header.data_start, e),
+			}
 			// copy it over from record
-			bw.write(r.get_data());
+			match bw.write(r.get_data()) {
+				Ok(()) => (),
+				Err(e) => fail!("Failed to write payload while trying to insert, {}",
+					e),
+			}
 		}
 		let res = (true, self.header.free_slot);
 		self.header.free_slot += 1;
@@ -402,7 +414,11 @@ impl SlottedPage {
 		}
 
 		// jump to that offset
-		br.seek(slot.offset() as i64, SeekSet);
+		match br.seek(slot.offset() as i64, SeekSet) {
+			Ok(()) => (),
+			Err(e) => fail!("Failed to seek to {} for record lookup, {}",
+				slot.offset(), e),
+		}
 		// read length of data from there
 		println!("Reading {} from offset {}", slot.len(), slot.offset());
 		let content = match br.read_exact(slot.len()) {
@@ -431,20 +447,37 @@ impl SlottedPage {
 		}
 	}
 
+	fn slot_offset(slot_id: uint) -> i64 {
+		(size_of::<SlottedPageHeader>() + slot_id * size_of::<Slot>()) as i64
+	}
+
 	fn write_slot(&self, slot_id: uint, slot: Slot) {
+		let slot_offset = SlottedPage::slot_offset(slot_id);
 		let mut frame = self.frame.write();
 		let mut bw = BufWriter::new(frame.get_mut_data());
-		bw.seek((size_of::<SlottedPageHeader>() + slot_id * size_of::<Slot>()) as i64,
-			SeekSet);
-		bw.write_le_u64(slot.as_u64());
+
+		match bw.seek(slot_offset, SeekSet) {
+			Ok(()) => (),
+			Err(e) => fail!("Failed seeking to {} while writing slot, {}",
+				slot_offset, e),
+		}
+		match bw.write_le_u64(slot.as_u64()) {
+			Ok(()) => (),
+			Err(e) => fail!("Failed writing slot data to {}, {}",
+				slot_offset, e),
+		}
 	}
 
 	fn read_slot(&self, slot_id: uint) -> Slot {
+		let slot_offset = SlottedPage::slot_offset(slot_id);
 		let frame = self.frame.read();
 		let mut br = BufReader::new(frame.get_data());
-		br.seek((size_of::<SlottedPageHeader>() + slot_id * size_of::<Slot>()) as i64,
-			SeekSet);
-		Slot::new(br.read_le_u64().unwrap())
+
+		match br.seek(slot_offset, SeekSet) {
+			Ok(()) => Slot::new(br.read_le_u64().unwrap()),
+			Err(e) => fail!("Failed seeking to {} while reading slot, {}",
+				slot_offset, e),
+		}
 	}
 
 	fn remove(&mut self, slot_id: uint) -> (bool, DeleteResult) {
