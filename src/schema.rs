@@ -228,15 +228,17 @@ impl Schema {
 }
 
 struct Record {
-	// TODO: do we even need this?
-	len: uint,
 	data: Vec<u8>,
 }
 
 impl Record {
 	/* move semantics, no copy */
-	pub fn new(len: uint, data: Vec<u8>) -> Record {
-		Record {len: len, data: data}
+	pub fn new(data: Vec<u8>) -> Record {
+		Record {data: data}
+	}
+
+	fn len(&self) -> uint {
+		self.data.len()
 	}
 	
 	pub fn get_data<'a>(&'a self) -> &'a [u8] {
@@ -343,7 +345,7 @@ impl SlottedPage {
 			}
 
 		};
-		println!("SlottedPageHeader: {:?}", header);
+		//println!("SlottedPageHeader: {:?}", header);
 		SlottedPage {frame: frame, header: header}
 	}
 
@@ -358,14 +360,15 @@ impl SlottedPage {
 
 	fn try_insert(&mut self, r: &Record) -> (bool, uint) {
 		println!("s.h.free_space {}", self.header.free_space);
-		if self.header.free_space < r.len + size_of::<Slot>() {
+		let record_len = r.len();
+		if self.header.free_space < record_len + size_of::<Slot>() {
 			return (false, 0)
 		}
 		// adjust the new start of data to be more to the frone
-		self.header.data_start -= r.len;
+		self.header.data_start -= record_len;
 		// we added the data plus one slot, reduce free space
-		self.header.free_space -= r.len + size_of::<Slot>();
-		let slot = Slot::new_from_offset_len(self.header.data_start, r.len);
+		self.header.free_space -= record_len + size_of::<Slot>();
+		let slot = Slot::new_from_offset_len(self.header.data_start, record_len);
 		{
 			let mut frame = self.frame.write();
 			let mut bw = BufWriter::new(frame.get_mut_data());
@@ -413,12 +416,10 @@ impl SlottedPage {
 		};
 		// construct and return a record from that data
 		let v = Vec::from_slice(content);
-		(false, Direct(Record {len: slot.len(), data: v}))
+		(false, Direct(Record::new(v)))
 	}
 
 	fn update(&self, old_tid: TID, new_tid: TID) -> (bool, bool) {
-		// TODO
-		// check if old record has same size
 		let slot_id = old_tid.slot_id();
 		let slot = {
 			let frame = self.frame.read();
@@ -606,7 +607,7 @@ fn create_schema() {
 fn slotted_page_create() {
 	let mut manager = buffer::BufferManager::new(1024, Path::new("."));
 	let mut seg = SPSegment {id: 1, manager: &mut manager};
-	let rec = Record {len: 1, data: vec!(42)};
+	let rec = Record::new(vec!(42));
 	let tid = seg.insert(&rec).unwrap();
 	println!("TID: {:?}", tid);
 	let slot = Slot::new_from_tid(tid);
@@ -615,11 +616,15 @@ fn slotted_page_create() {
 	println!("reconstructed TID: {:?} correct? {}", reconstructed_tid,
 		reconstructed_tid == tid);
 	let rec2 = seg.lookup(tid);
-	println!("Record: {}", rec2.data);
-	let rec3 = Record {len: 2, data: vec!(23, 42)};
+	println!("Record (rec2): {}", rec2.data);
+	let rec3 = Record::new(vec!(23, 42));
 	seg.update(tid, &rec3);
 	let rec4 = seg.lookup(tid);
 	println!("Record (rec4): {}", rec4.data);
+	let rec5 = Record::new(vec!(1, 2, 3));
+	seg.update(tid, &rec5);
+	let rec6 = seg.lookup(tid);
+	println!("Record (rec6): {}", rec6.data);
 	seg.remove(tid);
 	assert!(false);
 }
