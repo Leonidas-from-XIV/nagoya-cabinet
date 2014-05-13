@@ -46,6 +46,11 @@ enum DeleteResult {
 	DeleteCascade(TID),
 }
 
+enum UpdateResult {
+	UpdateDone,
+	DeleteOld(TID),
+}
+
 #[deriving(Encodable, Decodable)]
 struct Column {
 	name: ~str,
@@ -419,8 +424,8 @@ impl SlottedPage {
 		(false, Direct(Record::new(v)))
 	}
 
-	fn update(&self, old_tid: TID, new_tid: TID) -> (bool, bool) {
-		let slot_id = old_tid.slot_id();
+	fn update(&self, tid_to_update: TID, new_tid: TID) -> (bool, UpdateResult) {
+		let slot_id = tid_to_update.slot_id();
 		let slot = {
 			let frame = self.frame.read();
 			let mut br = BufReader::new(frame.get_data());
@@ -428,11 +433,6 @@ impl SlottedPage {
 				SeekSet);
 			Slot::new(br.read_le_u64().unwrap())
 		};
-		if slot.is_tid() {
-			// TODO:
-			// remove the old updated record
-			return (false, false)
-		}
 		let new_slot = Slot::new_from_tid(new_tid);
 
 		let mut frame = self.frame.write();
@@ -440,7 +440,15 @@ impl SlottedPage {
 		bw.seek((size_of::<SlottedPageHeader>() + slot_id * size_of::<Slot>()) as i64,
 			SeekSet);
 		bw.write_le_u64(new_slot.as_u64());
-		(true, true)
+
+		if slot.is_tid() {
+			// the old slot contained a TID which is not referenced
+			// anymore, so we have to delete it.
+			(true, DeleteOld(slot.as_tid()))
+		} else {
+			// if it used to contain an (offset, len) we are done directly
+			(true, UpdateDone)
+		}
 	}
 
 	fn remove(&mut self, slot_id: uint) -> (bool, DeleteResult) {
@@ -578,7 +586,10 @@ impl<'a> SPSegment<'a> {
 	pub fn update(&mut self, tid: TID, r: &Record) -> bool {
 		// TODO: prepend old tid to record
 		let new_tid = self.insert(r).unwrap();
-		self.with_slotted_page(tid, |sp| sp.update(tid, new_tid))
+		match self.with_slotted_page(tid, |sp| sp.update(tid, new_tid)) {
+			UpdateDone => true,
+			DeleteOld(obsolete_tid) => self.remove(obsolete_tid)
+		}
 	}
 }
 
