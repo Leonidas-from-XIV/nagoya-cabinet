@@ -508,8 +508,7 @@ fn join_segment(segment: u64, page: u64) -> u64{
 }
 
 impl<'a> SPSegment<'a> {
-	pub fn insert(&mut self, r: &Record) -> TID {
-		println!("inserting")
+	pub fn insert(&mut self, r: &Record) -> Option<TID> {
 		for i in range(0, 1<<buffer::PAGE_BITS) {
 			println!("Testing page {} for insertion", i);
 			let pagelock = match self.manager.fix_page(join_segment(self.id, i as u64)) {
@@ -521,11 +520,13 @@ impl<'a> SPSegment<'a> {
 			println!("try_insert: {}", inserted);
 			self.manager.unfix_page(pagelock, inserted);
 			if inserted {
-				return TID::new(i as u64, slot);
+				return Some(TID::new(i as u64, slot));
 			}
+			// TODO go away
 			break;
 		}
-		TID::new(0, 0)
+		// checked all the pages and didn't find any storage? whoa!
+		None
 	}
 
 	pub fn remove(&mut self, tid: TID) -> bool {
@@ -575,7 +576,7 @@ impl<'a> SPSegment<'a> {
 
 	pub fn update(&mut self, tid: TID, r: &Record) -> bool {
 		// TODO: prepend old tid to record
-		let new_tid = self.insert(r);
+		let new_tid = self.insert(r).unwrap();
 		self.with_slotted_page(tid, |sp| sp.update(tid, new_tid))
 	}
 }
@@ -606,7 +607,7 @@ fn slotted_page_create() {
 	let mut manager = buffer::BufferManager::new(1024, Path::new("."));
 	let mut seg = SPSegment {id: 1, manager: &mut manager};
 	let rec = Record {len: 1, data: vec!(42)};
-	let tid = seg.insert(&rec);
+	let tid = seg.insert(&rec).unwrap();
 	println!("TID: {:?}", tid);
 	let slot = Slot::new_from_tid(tid);
 	println!("Slot: {:?}, was TID? {}", slot, slot.is_tid());
