@@ -204,7 +204,7 @@ impl BufferManager {
 
 		if is_dirty {
 			let frame = frame.read();
-			let mut entry = self.entries.get_mut(&frame.page_id);
+			let entry = self.entries.get_mut(&frame.page_id);
 			entry.written = Dirty;
 		}
 	}

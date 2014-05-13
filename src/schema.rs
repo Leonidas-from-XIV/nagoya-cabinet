@@ -282,7 +282,7 @@ impl Slot {
 
 	fn new_from_tid(tid: TID) -> Slot {
 		let TID(n) = tid;
-		let tid_marker = (0b11111111_11111111 << 48);
+		let tid_marker = 0b11111111_11111111 << 48;
 		Slot(tid_marker | n)
 	}
 
@@ -515,8 +515,6 @@ impl<'a> SPSegment<'a> {
 			if inserted {
 				return Some(TID::new(i as u64, slot));
 			}
-			// TODO go away
-			break;
 		}
 		// checked all the pages and didn't find any storage? whoa!
 		None
