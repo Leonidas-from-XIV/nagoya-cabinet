@@ -5,7 +5,7 @@ extern crate sync;
 extern crate rand;
 extern crate serialize;
 use std::cmp::min;
-use std::io::{IoResult, IoError, InvalidInput, SeekStyle, BufWriter, BufReader};
+use std::io::{IoResult, IoError, InvalidInput, SeekStyle, BufWriter, BufReader, TempDir};
 use std::io::{SeekSet, SeekEnd, SeekCur};
 use std::mem::size_of;
 use sync::{Arc, RWLock};
@@ -616,6 +616,14 @@ fn main() {
 
 #[test]
 fn create_schema() {
+	let dir = match TempDir::new("slottedpage") {
+		Some(temp_dir) => temp_dir,
+		None => fail!("creation of temporary directory"),
+	};
+
+	let p = dir.path();
+	//let p = Path::new(".");
+
 	let name = Column {name: ~"name", datatype: Varchar(128), attributes: vec!(NotNull)};
 	let age = Column {name: ~"age", datatype: Integer, attributes: vec!(NotNull)};
 	let mut relation = Relation::new(~"Person");
@@ -624,7 +632,7 @@ fn create_schema() {
 	let mut schema = Schema::new();
 	schema.add_relation(relation);
 
-	let mut manager = buffer::BufferManager::new(1024, Path::new("."));
+	let mut manager = buffer::BufferManager::new(1024, p.clone());
 	schema.save_to_disk(&mut manager);
 	let new_schema = Schema::new_from_disk(&mut manager);
 	println!("new_schema == {:?}", new_schema);
@@ -632,7 +640,15 @@ fn create_schema() {
 
 #[test]
 fn slotted_page_create() {
-	let mut manager = buffer::BufferManager::new(1024, Path::new("."));
+	let dir = match TempDir::new("slottedpage") {
+		Some(temp_dir) => temp_dir,
+		None => fail!("creation of temporary directory"),
+	};
+
+	let p = dir.path();
+	//let p = Path::new(".");
+
+	let mut manager = buffer::BufferManager::new(1024, p.clone());
 	let mut seg = SPSegment {id: 1, manager: &mut manager};
 
 	let rec = Record::new(vec!(42));
