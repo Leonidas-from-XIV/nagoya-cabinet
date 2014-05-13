@@ -397,14 +397,9 @@ impl SlottedPage {
 	}
 
 	fn lookup(&self, slot_id: uint) -> (bool, LookupResult) {
+		let slot = self.read_slot(slot_id);
 		let frame = self.frame.read();
 		let mut br = BufReader::new(frame.get_data());
-		// move to slot position
-		br.seek((size_of::<SlottedPageHeader>() + slot_id * size_of::<Slot>()) as i64,
-			SeekSet);
-		// read offset and length of slot_id
-		let slot_data = br.read_le_u64().unwrap();
-		let slot = Slot::new(slot_data);
 
 		if slot.is_tid() {
 			// the slot contains a TID, not an (offset, len)
@@ -426,13 +421,7 @@ impl SlottedPage {
 
 	fn update(&self, tid_to_update: TID, new_tid: TID) -> (bool, UpdateResult) {
 		let slot_id = tid_to_update.slot_id();
-		let slot = {
-			let frame = self.frame.read();
-			let mut br = BufReader::new(frame.get_data());
-			br.seek((size_of::<SlottedPageHeader>() + slot_id * size_of::<Slot>()) as i64,
-				SeekSet);
-			Slot::new(br.read_le_u64().unwrap())
-		};
+		let slot = self.read_slot(slot_id);
 		let new_slot = Slot::new_from_tid(new_tid);
 
 		let mut frame = self.frame.write();
@@ -451,14 +440,16 @@ impl SlottedPage {
 		}
 	}
 
+	fn read_slot(&self, slot_id: uint) -> Slot {
+		let frame = self.frame.read();
+		let mut br = BufReader::new(frame.get_data());
+		br.seek((size_of::<SlottedPageHeader>() + slot_id * size_of::<Slot>()) as i64,
+			SeekSet);
+		Slot::new(br.read_le_u64().unwrap())
+	}
+
 	fn remove(&mut self, slot_id: uint) -> (bool, DeleteResult) {
-		let slot = {
-			let frame = self.frame.read();
-			let mut br = BufReader::new(frame.get_data());
-			br.seek((size_of::<SlottedPageHeader>() + slot_id * size_of::<Slot>()) as i64,
-				SeekSet);
-			Slot::new(br.read_le_u64().unwrap())
-		};
+		let slot = self.read_slot(slot_id);
 		println!("Removing slot_id {}, {:?}, is_tid? {}", slot_id, slot, slot.is_tid());
 
 		{
