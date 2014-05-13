@@ -232,6 +232,7 @@ impl Schema {
 	}
 }
 
+#[deriving(Eq, Show)]
 struct Record {
 	data: Vec<u8>,
 }
@@ -263,6 +264,7 @@ struct SlottedPageHeader {
 	free_space: uint,
 }
 
+#[deriving(Show)]
 struct Slot(u64);
 
 impl Slot {
@@ -500,7 +502,7 @@ impl SlottedPage {
 	}
 }
 
-#[deriving(Eq)]
+#[deriving(Eq, Show)]
 struct TID(u64);
 
 impl TID {
@@ -626,31 +628,41 @@ fn create_schema() {
 	schema.save_to_disk(&mut manager);
 	let new_schema = Schema::new_from_disk(&mut manager);
 	println!("new_schema == {:?}", new_schema);
-	assert!(false);
 }
 
 #[test]
 fn slotted_page_create() {
 	let mut manager = buffer::BufferManager::new(1024, Path::new("."));
 	let mut seg = SPSegment {id: 1, manager: &mut manager};
+
 	let rec = Record::new(vec!(42));
 	let tid = seg.insert(&rec).unwrap();
-	println!("TID: {:?}", tid);
+	println!("TID: {}", tid);
+
 	let slot = Slot::new_from_tid(tid);
-	println!("Slot: {:?}, was TID? {}", slot, slot.is_tid());
+	println!("Slot: {}, was TID? {}", slot, slot.is_tid());
 	let reconstructed_tid = slot.as_tid();
-	println!("reconstructed TID: {:?} correct? {}", reconstructed_tid,
+	println!("reconstructed TID: {} correct? {}", reconstructed_tid,
 		reconstructed_tid == tid);
+	assert_eq!(tid, reconstructed_tid);
+
 	let rec2 = seg.lookup(tid);
-	println!("Record (rec2): {}", rec2.data);
+	println!("Record (rec): {}", rec);
+	println!("Record (rec2): {}", rec2);
+	assert_eq!(rec, rec2);
+
 	let rec3 = Record::new(vec!(23, 42));
 	seg.update(tid, &rec3);
 	let rec4 = seg.lookup(tid);
-	println!("Record (rec4): {}", rec4.data);
+	println!("Record (rec4): {}", rec4);
+	assert_eq!(rec3, rec4);
+
 	let rec5 = Record::new(vec!(1, 2, 3));
 	seg.update(tid, &rec5);
 	let rec6 = seg.lookup(tid);
-	println!("Record (rec6): {}", rec6.data);
+	println!("Record (rec5): {}", rec5);
+	println!("Record (rec6): {}", rec6);
+	assert_eq!(rec5, rec6);
+
 	seg.remove(tid);
-	assert!(false);
 }
