@@ -119,7 +119,7 @@ impl<'a> Writer for SchemaWriter<'a> {
 			self.buffer_manager.unfix_page(pagelock, true);
 		}
 		//TODO remaining bytes from buf
-		println!("copied {}/{}, location: {}", copied, buf.len(), self.location);
+		info!("copied {}/{}, location: {}", copied, buf.len(), self.location);
 		//assert!(copied, buf.len());
 		if copied == buf.len() {
 			Ok(())
@@ -139,7 +139,7 @@ impl<'a> Seek for SchemaWriter<'a> {
 	}
 
 	fn seek(&mut self, pos: i64, style: SeekStyle) -> IoResult<()> {
-		println!("Seeking {}", pos);
+		debug!("Seeking {}", pos);
 		match style {
 			SeekSet => {
 				self.location = pos as u64;
@@ -176,14 +176,14 @@ impl<'a> SchemaWriter<'a> {
 			size = reader.read_le_u64().unwrap();
 		}
 		self.buffer_manager.unfix_page(pagelock, false);
-		println!("Size: {}", size);
+		debug!("Size: {}", size);
 
 		let mut data: Vec<u8> = Vec::with_capacity(size as uint);
 		let mut read = 0;
 
-		println!("location: {}", self.location);
+		debug!("location: {}", self.location);
 		for i in range(1, self.location / buffer::PAGE_SIZE as u64 + 2) {
-			println!("Reading page {}", i);
+			debug!("Reading page {}", i);
 			let pagelock = self.buffer_manager.fix_page(i).unwrap_or_else(
 				|| fail!("Failed fixing page {}", i));
 			{
@@ -370,7 +370,7 @@ impl SlottedPage {
 	}
 
 	fn try_insert(&mut self, r: &Record) -> (bool, uint) {
-		println!("s.h.free_space {}", self.header.free_space);
+		info!("s.h.free_space {}", self.header.free_space);
 		let record_len = r.len();
 		if self.header.free_space < record_len + size_of::<Slot>() {
 			return (false, 0)
@@ -422,7 +422,7 @@ impl SlottedPage {
 				slot.offset(), e),
 		}
 		// read length of data from there
-		println!("Reading {} from offset {}", slot.len(), slot.offset());
+		info!("Reading {} from offset {}", slot.len(), slot.offset());
 		let content = match br.read_exact(slot.len()) {
 			Ok(c) => c,
 			Err(e) => fail!("Failed reading from segmented page, {}", e),
@@ -484,7 +484,7 @@ impl SlottedPage {
 
 	fn remove(&mut self, slot_id: uint) -> (bool, DeleteResult) {
 		let slot = self.read_slot(slot_id);
-		println!("Removing slot_id {}, {:?}, is_tid? {}", slot_id, slot, slot.is_tid());
+		info!("Removing slot_id {}, {:?}, is_tid? {}", slot_id, slot, slot.is_tid());
 		// zero out the slot
 		self.write_slot(slot_id, Slot::empty());
 
@@ -538,14 +538,14 @@ fn join_segment(segment: u64, page: u64) -> u64{
 impl<'a> SPSegment<'a> {
 	pub fn insert(&mut self, r: &Record) -> Option<TID> {
 		for i in range(0, 1<<buffer::PAGE_BITS) {
-			println!("Testing page {} for insertion", i);
+			info!("Testing page {} for insertion", i);
 			let pagelock = match self.manager.fix_page(join_segment(self.id, i as u64)) {
 				Some(p) => p,
 				None => fail!("Failed aquiring page {}", i),
 			};
 			let mut sp = SlottedPage::new(pagelock.clone());
 			let (inserted, slot) = sp.try_insert(r);
-			println!("try_insert: {}", inserted);
+			info!("try_insert: {}", inserted);
 			self.manager.unfix_page(pagelock, inserted);
 			if inserted {
 				return Some(TID::new(i as u64, slot));
