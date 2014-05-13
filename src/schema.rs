@@ -374,6 +374,7 @@ impl SlottedPage {
 		// we added the data plus one slot, reduce free space
 		self.header.free_space -= record_len + size_of::<Slot>();
 		let slot = Slot::new_from_offset_len(self.header.data_start, record_len);
+		self.write_slot(self.header.free_slot, slot);
 		{
 			let mut frame = self.frame.write();
 			let mut bw = BufWriter::new(frame.get_mut_data());
@@ -381,12 +382,6 @@ impl SlottedPage {
 			bw.seek(self.header.data_start as i64, SeekSet);
 			// copy it over from record
 			bw.write(r.get_data());
-			// seek to beginning of slot storage
-			bw.seek((size_of::<SlottedPageHeader>() +
-				self.header.free_slot * size_of::<Slot>()) as i64,
-				SeekSet);
-			// write out slot
-			bw.write_le_u64(slot.as_u64());
 		}
 		let res = (true, self.header.free_slot);
 		self.header.free_slot += 1;
@@ -424,11 +419,7 @@ impl SlottedPage {
 		let slot = self.read_slot(slot_id);
 		let new_slot = Slot::new_from_tid(new_tid);
 
-		let mut frame = self.frame.write();
-		let mut bw = BufWriter::new(frame.get_mut_data());
-		bw.seek((size_of::<SlottedPageHeader>() + slot_id * size_of::<Slot>()) as i64,
-			SeekSet);
-		bw.write_le_u64(new_slot.as_u64());
+		self.write_slot(slot_id, new_slot);
 
 		if slot.is_tid() {
 			// the old slot contained a TID which is not referenced
@@ -438,6 +429,14 @@ impl SlottedPage {
 			// if it used to contain an (offset, len) we are done directly
 			(true, UpdateDone)
 		}
+	}
+
+	fn write_slot(&self, slot_id: uint, slot: Slot) {
+		let mut frame = self.frame.write();
+		let mut bw = BufWriter::new(frame.get_mut_data());
+		bw.seek((size_of::<SlottedPageHeader>() + slot_id * size_of::<Slot>()) as i64,
+			SeekSet);
+		bw.write_le_u64(slot.as_u64());
 	}
 
 	fn read_slot(&self, slot_id: uint) -> Slot {
@@ -451,15 +450,9 @@ impl SlottedPage {
 	fn remove(&mut self, slot_id: uint) -> (bool, DeleteResult) {
 		let slot = self.read_slot(slot_id);
 		println!("Removing slot_id {}, {:?}, is_tid? {}", slot_id, slot, slot.is_tid());
+		// zero out the slot
+		self.write_slot(slot_id, Slot::empty());
 
-		{
-			let mut frame = self.frame.write();
-			let mut bw = BufWriter::new(frame.get_mut_data());
-			bw.seek((size_of::<SlottedPageHeader>() + slot_id * size_of::<Slot>()) as i64,
-				SeekSet);
-			// zero out the slot
-			bw.write_le_u64(Slot::empty().as_u64());
-		}
 		self.header.slot_count -= 1;
 		self.write_header();
 
