@@ -113,7 +113,7 @@ impl<'a> Writer for SchemaWriter<'a> {
 				let mut writer = BufWriter::new(content);
 				match writer.write_le_u64(self.maximum) {
 					Ok(_) => (),
-					Err(e) => fail!("Failed writing lenght to page: {}", e)
+					Err(e) => fail!("Failed writing length to page: {}", e)
 				};
 			}
 			self.buffer_manager.unfix_page(pagelock, true);
