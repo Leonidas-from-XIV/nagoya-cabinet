@@ -1,9 +1,3 @@
-#![feature(phase)]
-#[phase(syntax, link)] extern crate log;
-extern crate collections;
-extern crate sync;
-extern crate rand;
-extern crate serialize;
 use std::cmp::min;
 use std::io::{IoResult, IoError, InvalidInput, SeekStyle, BufWriter, BufReader, TempDir};
 use std::io::{SeekSet, SeekEnd, SeekCur};
@@ -12,8 +6,6 @@ use sync::{Arc, RWLock};
 use serialize::ebml::{reader,writer};
 use serialize::{Encodable, Decodable};
 mod buffer;
-
-pub static SLOT_BITS: uint = 16;
 
 #[deriving(Encodable, Decodable)]
 enum SqlType {
@@ -608,10 +600,6 @@ impl<'a> SPSegment<'a> {
 			DeleteOld(obsolete_tid) => self.remove(obsolete_tid)
 		}
 	}
-}
-
-#[test]
-fn main() {
 }
 
 #[test]
