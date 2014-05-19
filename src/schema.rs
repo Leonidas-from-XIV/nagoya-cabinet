@@ -495,7 +495,7 @@ impl SlottedPage {
 }
 
 #[deriving(Eq, Show)]
-struct TID(u64);
+pub struct TID(u64);
 
 impl TID {
 	fn new(page_id: u64, slot_id: uint) -> TID {

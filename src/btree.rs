@@ -1,4 +1,5 @@
 mod buffer;
+mod schema;
 
 struct BTree<K> {
 	dummy: K
@@ -7,6 +8,16 @@ struct BTree<K> {
 impl<K: TotalOrd> BTree<K> {
 	fn new(segment_id: u64, dummy: K) -> BTree<K> {
 		BTree { dummy: dummy }
+	}
+
+	fn insert(&mut self, key: K, value: schema::TID) {
+	}
+
+	fn erase(&mut self, key: K) {
+	}
+
+	fn lookup(self, key: K) -> Option<schema::TID> {
+		None
 	}
 }
 
