@@ -9,8 +9,7 @@ mod buffer;
 mod schema;
 mod btree;
 
-#[test]
+#[cfg(not(test))]
 fn main() {
 	println!("Please recompile with the --test option");
-	assert!(false);
 }
