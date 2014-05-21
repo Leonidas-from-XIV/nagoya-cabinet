@@ -2,6 +2,7 @@ use std::cmp::min;
 use std::io::{IoResult, IoError, InvalidInput, SeekStyle, BufWriter, BufReader, TempDir};
 use std::io::{SeekSet, SeekEnd, SeekCur};
 use std::mem::size_of;
+use std::fmt::{Formatter, Result, Show};
 use sync::{Arc, RWLock};
 use serialize::ebml::{reader,writer};
 use serialize::{Encodable, Decodable};
@@ -224,9 +225,15 @@ impl Schema {
 	}
 }
 
-#[deriving(Eq, Show)]
+#[deriving(Eq)]
 struct Record {
 	data: Vec<u8>,
+}
+
+impl Show for Record {
+	fn fmt(&self, f: &mut Formatter) -> Result {
+		write!(f.buf, "Record({})", self.data)
+	}
 }
 
 impl Record {
@@ -256,8 +263,13 @@ struct SlottedPageHeader {
 	free_space: uint,
 }
 
-#[deriving(Show)]
 struct Slot(u64);
+
+impl Show for Slot {
+	fn fmt(&self, f: &mut Formatter) -> Result {
+		write!(f.buf, "Slot(offset={}, len={})", self.offset(), self.len())
+	}
+}
 
 impl Slot {
 	fn new(data: u64) -> Slot {
@@ -494,8 +506,15 @@ impl SlottedPage {
 	}
 }
 
-#[deriving(Eq, Show)]
+#[deriving(Eq)]
 pub struct TID(u64);
+
+impl Show for TID {
+	fn fmt(&self, f: &mut Formatter) -> Result {
+		write!(f.buf, "TID(page_id={}, slot_id={})",
+			self.page_id(), self.slot_id())
+	}
+}
 
 impl TID {
 	pub fn new(page_id: u64, slot_id: uint) -> TID {
