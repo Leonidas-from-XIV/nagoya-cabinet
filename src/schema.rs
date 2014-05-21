@@ -498,7 +498,7 @@ impl SlottedPage {
 pub struct TID(u64);
 
 impl TID {
-	fn new(page_id: u64, slot_id: uint) -> TID {
+	pub fn new(page_id: u64, slot_id: uint) -> TID {
 		assert!(page_id < 1<<32);
 		assert!(slot_id < 1<<16);
 		let res = page_id << 16 | slot_id as u64;
