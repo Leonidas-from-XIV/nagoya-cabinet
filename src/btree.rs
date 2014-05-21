@@ -13,14 +13,22 @@ struct BTree<'a, K> {
 
 impl<'a, K: TotalOrd> BTree<'a, K> {
 	fn new<'b>(segment_id: u64, dummy: K, manager: &'b mut buffer::BufferManager) -> BTree<'b, K> {
-		let lbn = LazyBranchNode::new(1);
-		BTree { segment: segment_id, manager: manager, tree: lbn}
+		BTree {
+			segment: segment_id,
+			manager: manager,
+			tree: LazyBranchNode::new(1),
+		}
 	}
 
 	//fn locate_page
 
 	fn insert(&mut self, key: K, value: schema::TID) {
 		let node: BranchPage<K> = self.tree.load(self.manager);
+
+		//for i in range(0, node.entries.len()) {
+		//	println!("i {:?}", node.entries[i]);
+		//}
+		node.insert_value(key, value);
 	}
 
 	fn erase(&mut self, key: K) {
@@ -83,6 +91,7 @@ impl<'a, K> LeafPage<'a, K> {
 				}
 			)
 		};
+		// TODO: calculate capacity
 		LeafPage { entries: r, capacity: r.len() }
 	}
 
@@ -101,13 +110,14 @@ impl<'a, K> LeafPage<'a, K> {
 }
 
 struct BranchPage<'a, K> {
+	capacity: uint,
 	entries: &'a [BranchEntry<K>],
 }
 
 impl<'a, K> BranchPage<'a, K> {
 	fn new(page: &[u8]) -> BranchPage<'a, K> {
 		let entry_size = size_of::<BranchEntry<K>>();
-		let r = unsafe {
+		let r: &[BranchEntry<K>] = unsafe {
 			cast::transmute(
 				Slice::<BranchEntry<K>> {
 					data: page.as_ptr() as *() as *BranchEntry<K>,
@@ -115,8 +125,44 @@ impl<'a, K> BranchPage<'a, K> {
 				}
 			)
 		};
-		BranchPage { entries: r }
+
+		/* find slots that are used */
+		let mut capacity = r.len();
+		for i in range(0, r.len()) {
+			if r[i].page_id != 0 {
+				capacity -= 1;
+			}
+		}
+
+		println!("BranchPage computed capacity: {}", capacity);
+
+		BranchPage {
+			entries: r,
+			capacity: capacity
+		}
 	}
+
+	/* might return a new branch node if this one was split */
+	fn insert_value(&self, key: K, value: schema::TID) -> Option<LazyBranchNode> {
+		let mut place = 0;
+		// locate the place where to insert
+		for i in range(0, self.entries.len()) {
+			if self.entries[i].page_id == 0 {
+				continue
+			}
+			println!("Entry i {:?}, key {:?}", self.entries[i], self.entries[i].key);
+			// TODO find place
+		}
+		let go_to_page = self.entries[place].page_id;
+		if go_to_page == 0 {
+			// TODO: create page
+		}
+
+		// currently not caring about splitting branch pages
+		None
+	}
+
+	//fn insert_page
 }
 
 #[test]
