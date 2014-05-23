@@ -9,7 +9,7 @@ mod schema;
 struct BTree<'a, K> {
 	segment: u64,
 	manager: &'a mut buffer::BufferManager,
-	tree: LazyBranchNode,
+	tree: LazyNode,
 }
 
 impl<'a, K: TotalOrd + Zero> BTree<'a, K> {
@@ -17,19 +17,18 @@ impl<'a, K: TotalOrd + Zero> BTree<'a, K> {
 		BTree {
 			segment: segment_id,
 			manager: manager,
-			tree: LazyBranchNode::new(1),
+			tree: LazyNode::new(1),
 		}
 	}
 
 	//fn locate_page
 
 	fn insert(&mut self, key: K, value: schema::TID) {
-		let node: BranchPage<K> = self.tree.load(self.manager);
-
-		//for i in range(0, node.entries.len()) {
-		//	println!("i {:?}", node.entries[i]);
-		//}
-		node.insert_value(key, value);
+		let node = self.tree.load(self.manager);
+		match node {
+			Inner(n) => {n.insert_value(key, value);},
+			Leaf(n) => fail!("just fail"),
+		}
 	}
 
 	fn erase(&mut self, key: K) {
@@ -41,21 +40,20 @@ impl<'a, K: TotalOrd + Zero> BTree<'a, K> {
 }
 
 /* a placeholder for the actual page */
-struct LazyBranchNode {
+struct LazyNode {
 	page_id: u64,
 }
 
 // TODO implement Drop to unfix page
-impl LazyBranchNode {
-	fn new(page_id: u64) -> LazyBranchNode {
-		LazyBranchNode {page_id: page_id}
+impl LazyNode {
+	fn new(page_id: u64) -> LazyNode {
+		LazyNode {page_id: page_id}
 	}
 
-	fn load<K>(&self, manager: &mut buffer::BufferManager) -> BranchPage<K> {
+	fn load<'a, K: Zero>(&self, manager: &mut buffer::BufferManager) -> Node<'a, K> {
 		let pagelock = manager.fix_page(self.page_id).unwrap();
 		let page = pagelock.read();
-		let bp: BranchPage<K> = BranchPage::new(page.get_data());
-		bp
+		load_node(page.get_data())
 	}
 }
 
@@ -167,7 +165,7 @@ impl<'a, K> BranchPage<'a, K> {
 	}
 
 	/* might return a new branch node if this one was split */
-	fn insert_value(&self, key: K, value: schema::TID) -> Option<LazyBranchNode> {
+	fn insert_value(&self, key: K, value: schema::TID) -> Option<LazyNode> {
 		let mut place = 0;
 		// locate the place where to insert
 		for i in range(0, self.entries.len()) {
