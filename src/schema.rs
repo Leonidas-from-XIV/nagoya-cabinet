@@ -540,6 +540,10 @@ impl TID {
 		// slot id is 16 bit max
 		(n as u16) as uint
 	}
+
+	pub fn is_invalid(&self) -> bool {
+		self == &TID(0)
+	}
 }
 
 fn join_segment(segment: u64, page: u64) -> u64{

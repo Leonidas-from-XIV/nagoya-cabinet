@@ -107,9 +107,7 @@ impl<'a, K: Zero> LeafPage<'a, K> {
 		/* find slots that are used */
 		let mut capacity = r.len();
 		for i in range(0, r.len()) {
-			// TODO well, key == 0 is not really an invalid entry
-			// TID should be 0 as well…
-			if !r[i].key.is_zero() {
+			if !r[i].key.is_zero() && !r[i].tid.is_invalid() {
 				capacity -= 1;
 			}
 		}
