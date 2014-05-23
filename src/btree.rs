@@ -1,6 +1,7 @@
 use std::cast;
 use std::mem::size_of;
 use std::raw::Slice;
+use std::num::Zero;
 
 mod buffer;
 mod schema;
@@ -11,7 +12,7 @@ struct BTree<'a, K> {
 	tree: LazyBranchNode,
 }
 
-impl<'a, K: TotalOrd> BTree<'a, K> {
+impl<'a, K: TotalOrd + Zero> BTree<'a, K> {
 	fn new<'b>(segment_id: u64, dummy: K, manager: &'b mut buffer::BufferManager) -> BTree<'b, K> {
 		BTree {
 			segment: segment_id,
@@ -78,21 +79,45 @@ struct LeafPage<'a, K> {
 	entries: &'a [LeafEntry<K>],
 }
 
-impl<'a, K> LeafPage<'a, K> {
+fn load_node<'a, K: Zero>(page: &[u8]) -> Node<'a, K> {
+	if page[0] == 255 {
+		Leaf(LeafPage::new(page))
+	} else {
+		Inner(BranchPage::new(page))
+	}
+}
+
+impl<'a, K: Zero> LeafPage<'a, K> {
 	fn new(page: &[u8]) -> LeafPage<'a, K> {
+		// first byte is a Leaf/Branch marker
 		let entry_size = size_of::<LeafEntry<K>>();
+		let entry_num = (page.len() - size_of::<u8>()) / entry_size;
+
 		//let mut r: &[LeafEntry<K>] = unsafe { cast::transmute(page) };
 		//unsafe { r.set_len(buffer::PAGE_SIZE / entry_size) };
-		let r = unsafe {
+		let r: &[LeafEntry<K>] = unsafe {
 			cast::transmute(
 				Slice::<LeafEntry<K>> {
 					data: page.as_ptr() as *() as *LeafEntry<K>,
-					len: page.len() / entry_size,
+					len: entry_num,
 				}
 			)
 		};
-		// TODO: calculate capacity
-		LeafPage { entries: r, capacity: r.len() }
+
+		/* find slots that are used */
+		let mut capacity = r.len();
+		for i in range(0, r.len()) {
+			// TODO well, key == 0 is not really an invalid entry
+			// TID should be 0 as well…
+			if !r[i].key.is_zero() {
+				capacity -= 1;
+			}
+		}
+
+		LeafPage {
+			entries: r,
+			capacity: capacity
+		}
 	}
 
 	fn insert(&mut self, key: K, tid: schema::TID) -> Option<()> {
@@ -117,11 +142,12 @@ struct BranchPage<'a, K> {
 impl<'a, K> BranchPage<'a, K> {
 	fn new(page: &[u8]) -> BranchPage<'a, K> {
 		let entry_size = size_of::<BranchEntry<K>>();
+		let entry_num = (page.len() - size_of::<u8>()) / entry_size;
 		let r: &[BranchEntry<K>] = unsafe {
 			cast::transmute(
 				Slice::<BranchEntry<K>> {
 					data: page.as_ptr() as *() as *BranchEntry<K>,
-					len: page.len() / entry_size,
+					len: entry_num,
 				}
 			)
 		};
