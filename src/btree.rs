@@ -10,6 +10,7 @@ struct BTree<'a, K> {
 	segment: u64,
 	manager: &'a mut buffer::BufferManager,
 	tree: LazyNode,
+	next_free_page: u64,
 }
 
 impl<'a, K: TotalOrd + Zero> BTree<'a, K> {
@@ -18,6 +19,7 @@ impl<'a, K: TotalOrd + Zero> BTree<'a, K> {
 			segment: segment_id,
 			manager: manager,
 			tree: LazyNode::new(1),
+			next_free_page: 2,
 		}
 	}
 
@@ -25,9 +27,15 @@ impl<'a, K: TotalOrd + Zero> BTree<'a, K> {
 
 	fn insert(&mut self, key: K, value: schema::TID) {
 		let node = self.tree.load(self.manager);
-		match node {
-			Inner(n) => {n.insert_value(key, value);},
-			Leaf(n) => fail!("just fail"),
+		// try insertion and see if the root was split
+		let candidate = match node {
+			Inner(mut n) => n.insert_value(key, value),
+			Leaf(mut n) => n.insert_value(key, value),
+		};
+		// set new tree root if it was split
+		match candidate {
+			Some(new_node) => self.tree = new_node,
+			None => (),
 		}
 	}
 
@@ -116,8 +124,10 @@ impl<'a, K: Zero> LeafPage<'a, K> {
 		}
 	}
 
-	fn insert(&mut self, key: K, tid: schema::TID) -> Option<()> {
+	fn insert_value(&mut self, key: K, tid: schema::TID) -> Option<LazyNode> {
 		if self.capacity == 0 {
+			// TODO split
+			fail!("shit");
 			return None
 		}
 
@@ -126,7 +136,10 @@ impl<'a, K: Zero> LeafPage<'a, K> {
 			//let e = self.entries[i];
 			println!("Entry {:?}", self.entries[i]);
 		}
-		Some(())
+		// TODO insert
+
+		// insertion went fine, done
+		None
 	}
 }
 
