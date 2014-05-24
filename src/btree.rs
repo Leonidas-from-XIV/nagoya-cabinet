@@ -165,7 +165,7 @@ impl<'a, K: TotalOrd + Zero> LeafNode<'a, K> {
 	fn insert_value(&mut self, key: K, tid: schema::TID) -> Option<LazyNode> {
 		if self.capacity == 0 {
 			// TODO split
-			fail!("shit");
+			fail!("Not implemented");
 			return None
 		}
 
@@ -188,6 +188,7 @@ impl<'a, K: TotalOrd + Zero> LeafNode<'a, K> {
 			println!("Entry {:?}", self.entries[i]);
 			if &self.entries[i].key > key {
 				found = i - 1;
+				break;
 			}
 		}
 		found
@@ -195,7 +196,11 @@ impl<'a, K: TotalOrd + Zero> LeafNode<'a, K> {
 
 	/* moves all items from `index` one number back */
 	fn shift_from(&mut self, index: uint) {
-		// TODO
+		// actually, this rotates right by 1 starting from index
+		let last_elem = self.entries.len() - 1;
+		for i in range(index, last_elem) {
+			self.entries.swap(i, last_elem);
+		}
 	}
 }
 
