@@ -265,6 +265,13 @@ fn split_segment(num: u64) -> (u64, u64) {
 	(high, low)
 }
 
+pub fn join_segment(segment: u64, page: u64) -> u64 {
+	// TODO do proper masking before
+	let high = segment << PAGE_BITS;
+	let low = page;
+	high & low
+}
+
 #[test]
 fn test_create() {
 	let dir = match TempDir::new("buffermanager") {

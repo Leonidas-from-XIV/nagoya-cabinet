@@ -29,7 +29,7 @@ impl<'a, K: TotalOrd + Zero> BTree<'a, K> {
 		let node = self.tree.load(self.manager);
 		// try insertion and see if the root was split
 		let candidate = match node {
-			Inner(mut n) => n.insert_value(key, value),
+			Inner(mut n) => n.insert_value(self, key, value),
 			Leaf(mut n) => n.insert_value(key, value),
 		};
 		// set new tree root if it was split
@@ -37,6 +37,34 @@ impl<'a, K: TotalOrd + Zero> BTree<'a, K> {
 			Some(new_node) => self.tree = new_node,
 			None => (),
 		}
+	}
+
+	fn next_page(&mut self) -> u64 {
+		let n = self.next_free_page;
+		self.next_free_page += 1;
+		n
+	}
+
+	fn create_branch_page(&mut self) -> LazyNode {
+		let next = self.next_page();
+		let page_path = buffer::join_segment(self.segment, next);
+		let pagelock = self.manager.fix_page(page_path).unwrap();
+		let mut page = pagelock.write();
+		let data = page.get_mut_data();
+		data[0] = 0;
+		LazyNode::new(page_path)
+	}
+
+	fn create_leaf_page(&mut self) -> LazyNode {
+		let next = self.next_page();
+		let page_path = buffer::join_segment(self.segment, next);
+		let pagelock = self.manager.fix_page(page_path).unwrap();
+		let mut page = pagelock.write();
+		let data = page.get_mut_data();
+		// marker to be a leaf page
+		data[0] = 255;
+		LazyNode::new(page_path)
+
 	}
 
 	fn erase(&mut self, key: K) {
@@ -178,7 +206,7 @@ impl<'a, K> BranchPage<'a, K> {
 	}
 
 	/* might return a new branch node if this one was split */
-	fn insert_value(&self, key: K, value: schema::TID) -> Option<LazyNode> {
+	fn insert_value(&self, tree: &mut BTree<K>, key: K, value: schema::TID) -> Option<LazyNode> {
 		let mut place = 0;
 		// locate the place where to insert
 		for i in range(0, self.entries.len()) {
@@ -196,8 +224,6 @@ impl<'a, K> BranchPage<'a, K> {
 		// currently not caring about splitting branch pages
 		None
 	}
-
-	//fn insert_page
 }
 
 #[test]
