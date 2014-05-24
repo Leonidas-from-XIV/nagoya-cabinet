@@ -6,6 +6,9 @@ use std::num::Zero;
 mod buffer;
 mod schema;
 
+static LEAF_MARKER: u8 = 0b111111111;
+static BRANCH_MARKER: u8 = 0b0;
+
 struct BTree<'a, K> {
 	segment: u64,
 	manager: &'a mut buffer::BufferManager,
@@ -29,7 +32,7 @@ impl<'a, K: TotalOrd + Zero> BTree<'a, K> {
 		let node = self.tree.load(self.manager);
 		// try insertion and see if the root was split
 		let candidate = match node {
-			Inner(mut n) => n.insert_value(self, key, value),
+			Branch(mut n) => n.insert_value(self, key, value),
 			Leaf(mut n) => n.insert_value(key, value),
 		};
 		// set new tree root if it was split
@@ -86,43 +89,52 @@ impl LazyNode {
 		LazyNode {page_id: page_id}
 	}
 
+	/* 
+	 * As this is just a placeholder, return the actual node that his is
+	 * representing
+	 */
 	fn load<'a, K: TotalOrd + Zero>(&self, manager: &mut buffer::BufferManager) -> Node<'a, K> {
 		let pagelock = manager.fix_page(self.page_id).unwrap();
 		let page = pagelock.read();
-		load_node(page.get_data())
+		LazyNode::load_node(page.get_data())
+	}
+
+	/* helper method to load a Node tepending on the page marker */
+	fn load_node<'a, K: TotalOrd + Zero>(page: &[u8]) -> Node<'a, K> {
+		if page[0] == 255 {
+			Leaf(LeafNode::new(page))
+		} else {
+			Branch(BranchNode::new(page))
+		}
 	}
 }
 
+/* a node might either be an inner node (branch node) or a leaf node (LeafNode) */
 enum Node<'a, K> {
-	Inner(BranchPage<'a, K>),
-	Leaf(LeafPage<'a, K>),
+	Branch(BranchNode<'a, K>),
+	Leaf(LeafNode<'a, K>),
 }
 
+/* leaf pages consist mainly of leaf entries which are (K, TID) pairs */
 struct LeafEntry<K> {
 	key: K,
 	tid: schema::TID,
 }
 
+/* branch pages consist mainly of branch entries which are (K, page_id) pairs */
 struct BranchEntry<K> {
 	key: K,
 	page_id: u64,
 }
 
-struct LeafPage<'a, K> {
+
+struct LeafNode<'a, K> {
 	capacity: uint,
 	entries: &'a mut [LeafEntry<K>],
 }
 
-fn load_node<'a, K: TotalOrd + Zero>(page: &[u8]) -> Node<'a, K> {
-	if page[0] == 255 {
-		Leaf(LeafPage::new(page))
-	} else {
-		Inner(BranchPage::new(page))
-	}
-}
-
-impl<'a, K: Zero> LeafPage<'a, K> {
-	fn new(page: &[u8]) -> LeafPage<'a, K> {
+impl<'a, K: Zero> LeafNode<'a, K> {
+	fn new(page: &[u8]) -> LeafNode<'a, K> {
 		// first byte is a Leaf/Branch marker
 		let entry_size = size_of::<LeafEntry<K>>();
 		let entry_num = (page.len() - size_of::<u8>()) / entry_size;
@@ -144,7 +156,7 @@ impl<'a, K: Zero> LeafPage<'a, K> {
 			}
 		}
 
-		LeafPage {
+		LeafNode {
 			entries: r,
 			capacity: capacity
 		}
@@ -159,7 +171,6 @@ impl<'a, K: Zero> LeafPage<'a, K> {
 
 		// find place to insert
 		for i in range(0, self.entries.len()) {
-			//let e = self.entries[i];
 			println!("Entry {:?}", self.entries[i]);
 		}
 		// TODO insert
@@ -169,13 +180,13 @@ impl<'a, K: Zero> LeafPage<'a, K> {
 	}
 }
 
-struct BranchPage<'a, K> {
+struct BranchNode<'a, K> {
 	capacity: uint,
 	entries: &'a mut [BranchEntry<K>],
 }
 
-impl<'a, K: TotalOrd + Zero> BranchPage<'a, K> {
-	fn new(page: &[u8]) -> BranchPage<'a, K> {
+impl<'a, K: TotalOrd + Zero> BranchNode<'a, K> {
+	fn new(page: &[u8]) -> BranchNode<'a, K> {
 		let entry_size = size_of::<BranchEntry<K>>();
 		let entry_num = (page.len() - size_of::<u8>()) / entry_size;
 		let mut r: &mut [BranchEntry<K>] = unsafe {
@@ -195,9 +206,9 @@ impl<'a, K: TotalOrd + Zero> BranchPage<'a, K> {
 			}
 		}
 
-		println!("BranchPage computed capacity: {}", capacity);
+		println!("BranchNode computed capacity: {}", capacity);
 
-		BranchPage {
+		BranchNode {
 			entries: r,
 			capacity: capacity
 		}
@@ -220,7 +231,7 @@ impl<'a, K: TotalOrd + Zero> BranchPage<'a, K> {
 			let new_node = lazy_node.load(tree.manager);
 			let split_candidate = match new_node {
 				Leaf(mut n) => n.insert_value(key, value),
-				Inner(_) => fail!("Did not create a leaf page"),
+				Branch(_) => fail!("Did not create a leaf page"),
 			};
 			self.entries[place].page_id = lazy_node.page_id;
 			return split_candidate
@@ -246,7 +257,7 @@ fn create_leaf_page() {
 	let mut manager = buffer::BufferManager::new(1024, p.clone());
 	let pagelock = manager.fix_page(0).unwrap();
 	let page = pagelock.read();
-	let lp: LeafPage<u64> = LeafPage::new(page.get_data());
+	let lp: LeafNode<u64> = LeafNode::new(page.get_data());
 	println!("lp len: {}", lp.entries.len());
 	assert!(false);
 }
