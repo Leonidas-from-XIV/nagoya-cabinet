@@ -54,7 +54,7 @@ impl<'a, K: TotalOrd + Zero> BTree<'a, K> {
 		let pagelock = self.manager.fix_page(page_path).unwrap();
 		let mut page = pagelock.write();
 		let data = page.get_mut_data();
-		data[0] = 0;
+		data[0] = BRANCH_MARKER;
 		LazyNode::new(page_path)
 	}
 
@@ -65,7 +65,7 @@ impl<'a, K: TotalOrd + Zero> BTree<'a, K> {
 		let mut page = pagelock.write();
 		let data = page.get_mut_data();
 		// marker to be a leaf page
-		data[0] = 255;
+		data[0] = LEAF_MARKER;
 		LazyNode::new(page_path)
 
 	}
@@ -101,10 +101,12 @@ impl LazyNode {
 
 	/* helper method to load a Node tepending on the page marker */
 	fn load_node<'a, K: TotalOrd + Zero>(page: &[u8]) -> Node<'a, K> {
-		if page[0] == 255 {
+		if page[0] == LEAF_MARKER {
 			Leaf(LeafNode::new(page))
-		} else {
+		} else if page[0] == BRANCH_MARKER {
 			Branch(BranchNode::new(page))
+		} else {
+			fail!("Trying to load unknown BTree node type")
 		}
 	}
 }
