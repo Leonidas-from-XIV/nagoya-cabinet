@@ -89,7 +89,7 @@ impl LazyNode {
 		LazyNode {page_id: page_id}
 	}
 
-	/* 
+	/*
 	 * As this is just a placeholder, return the actual node that his is
 	 * representing
 	 */
@@ -133,7 +133,7 @@ struct LeafNode<'a, K> {
 	entries: &'a mut [LeafEntry<K>],
 }
 
-impl<'a, K: Zero> LeafNode<'a, K> {
+impl<'a, K: TotalOrd + Zero> LeafNode<'a, K> {
 	fn new(page: &[u8]) -> LeafNode<'a, K> {
 		// first byte is a Leaf/Branch marker
 		let entry_size = size_of::<LeafEntry<K>>();
@@ -170,13 +170,32 @@ impl<'a, K: Zero> LeafNode<'a, K> {
 		}
 
 		// find place to insert
-		for i in range(0, self.entries.len()) {
-			println!("Entry {:?}", self.entries[i]);
-		}
-		// TODO insert
+		let location = self.find_slot(&key);
+		// free that spot
+		self.shift_from(location);
+		// and put it in
+		self.entries[location].key = key;
+		self.entries[location].tid = tid;
 
 		// insertion went fine, done
 		None
+	}
+
+	/* finds the location at which a key should be inserted */
+	fn find_slot(&self, key: &K) -> uint {
+		let mut found = 0;
+		for i in range(0, self.entries.len()) {
+			println!("Entry {:?}", self.entries[i]);
+			if &self.entries[i].key > key {
+				found = i - 1;
+			}
+		}
+		found
+	}
+
+	/* moves all items from `index` one number back */
+	fn shift_from(&mut self, index: uint) {
+		// TODO
 	}
 }
 
