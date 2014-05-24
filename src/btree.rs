@@ -86,7 +86,7 @@ impl LazyNode {
 		LazyNode {page_id: page_id}
 	}
 
-	fn load<'a, K: Zero>(&self, manager: &mut buffer::BufferManager) -> Node<'a, K> {
+	fn load<'a, K: TotalOrd + Zero>(&self, manager: &mut buffer::BufferManager) -> Node<'a, K> {
 		let pagelock = manager.fix_page(self.page_id).unwrap();
 		let page = pagelock.read();
 		load_node(page.get_data())
@@ -110,10 +110,10 @@ struct BranchEntry<K> {
 
 struct LeafPage<'a, K> {
 	capacity: uint,
-	entries: &'a [LeafEntry<K>],
+	entries: &'a mut [LeafEntry<K>],
 }
 
-fn load_node<'a, K: Zero>(page: &[u8]) -> Node<'a, K> {
+fn load_node<'a, K: TotalOrd + Zero>(page: &[u8]) -> Node<'a, K> {
 	if page[0] == 255 {
 		Leaf(LeafPage::new(page))
 	} else {
@@ -127,9 +127,7 @@ impl<'a, K: Zero> LeafPage<'a, K> {
 		let entry_size = size_of::<LeafEntry<K>>();
 		let entry_num = (page.len() - size_of::<u8>()) / entry_size;
 
-		//let mut r: &[LeafEntry<K>] = unsafe { cast::transmute(page) };
-		//unsafe { r.set_len(buffer::PAGE_SIZE / entry_size) };
-		let r: &[LeafEntry<K>] = unsafe {
+		let mut r: &mut[LeafEntry<K>] = unsafe {
 			cast::transmute(
 				Slice::<LeafEntry<K>> {
 					data: page.as_ptr() as *() as *LeafEntry<K>,
@@ -173,14 +171,14 @@ impl<'a, K: Zero> LeafPage<'a, K> {
 
 struct BranchPage<'a, K> {
 	capacity: uint,
-	entries: &'a [BranchEntry<K>],
+	entries: &'a mut [BranchEntry<K>],
 }
 
-impl<'a, K> BranchPage<'a, K> {
+impl<'a, K: TotalOrd + Zero> BranchPage<'a, K> {
 	fn new(page: &[u8]) -> BranchPage<'a, K> {
 		let entry_size = size_of::<BranchEntry<K>>();
 		let entry_num = (page.len() - size_of::<u8>()) / entry_size;
-		let r: &[BranchEntry<K>] = unsafe {
+		let mut r: &mut [BranchEntry<K>] = unsafe {
 			cast::transmute(
 				Slice::<BranchEntry<K>> {
 					data: page.as_ptr() as *() as *BranchEntry<K>,
@@ -206,7 +204,7 @@ impl<'a, K> BranchPage<'a, K> {
 	}
 
 	/* might return a new branch node if this one was split */
-	fn insert_value(&self, tree: &mut BTree<K>, key: K, value: schema::TID) -> Option<LazyNode> {
+	fn insert_value(&mut self, tree: &mut BTree<K>, key: K, value: schema::TID) -> Option<LazyNode> {
 		let mut place = 0;
 		// locate the place where to insert
 		for i in range(0, self.entries.len()) {
@@ -218,7 +216,14 @@ impl<'a, K> BranchPage<'a, K> {
 		}
 		let go_to_page = self.entries[place].page_id;
 		if go_to_page == 0 {
-			// TODO: create page
+			let lazy_node = tree.create_leaf_page();
+			let new_node = lazy_node.load(tree.manager);
+			let split_candidate = match new_node {
+				Leaf(mut n) => n.insert_value(key, value),
+				Inner(_) => fail!("Did not create a leaf page"),
+			};
+			self.entries[place].page_id = lazy_node.page_id;
+			return split_candidate
 		}
 
 		// currently not caring about splitting branch pages
