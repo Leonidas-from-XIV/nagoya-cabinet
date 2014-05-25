@@ -14,6 +14,10 @@ static BRANCH_MARKER: u8 = 0b0;
 /* simple type alias to simplify signatures */
 type ConcurrentManager = Rc<Mutex<buffer::BufferManager>>;
 
+/* a new trait which specifies which traits our keys should implement */
+trait Keyish: TotalOrd + Zero + Clone {}
+impl<T: TotalOrd + Zero + Clone> Keyish for T {}
+
 struct BTree<'a, K> {
 	segment: u64,
 	manager: ConcurrentManager,
@@ -21,7 +25,7 @@ struct BTree<'a, K> {
 	next_free_page: u64,
 }
 
-impl<'a, K: TotalOrd + Zero + Clone> BTree<'a, K> {
+impl<'a, K: Keyish> BTree<'a, K> {
 	fn new<'b>(segment_id: u64, manager: ConcurrentManager) -> BTree<'b, K> {
 		let tree_base = buffer::join_segment(segment_id, 1);
 		// TODO read tree and next free page from page 0
@@ -106,7 +110,7 @@ impl LazyNode {
 	 * As this is just a placeholder, return the actual node that his is
 	 * representing
 	 */
-	fn load<'a, K: TotalOrd + Zero + Clone>(&self, manager: ConcurrentManager) -> Node<'a, K> {
+	fn load<'a, K: Keyish>(&self, manager: ConcurrentManager) -> Node<'a, K> {
 		let pagelock = {
 			let mut managerlock = manager.lock();
 			managerlock.fix_page(self.page_id).unwrap()
@@ -159,7 +163,7 @@ struct LeafNode<'a, K> {
 	frame: buffer::ConcurrentFrame,
 }
 
-impl<'a, K: TotalOrd + Zero + Clone> LeafNode<'a, K> {
+impl<'a, K: Keyish> LeafNode<'a, K> {
 	fn new(manager: ConcurrentManager, frame: buffer::ConcurrentFrame) -> LeafNode<'a, K> {
 		let mut r = {
 			let framelock = frame.read();
@@ -269,7 +273,7 @@ struct BranchNode<'a, K> {
 	frame: buffer::ConcurrentFrame,
 }
 
-impl<'a, K: TotalOrd + Zero + Clone> BranchNode<'a, K> {
+impl<'a, K: Keyish> BranchNode<'a, K> {
 	fn new(manager: ConcurrentManager, frame: buffer::ConcurrentFrame) -> BranchNode<'a, K> {
 		let mut r = {
 			let framelock = frame.read();
