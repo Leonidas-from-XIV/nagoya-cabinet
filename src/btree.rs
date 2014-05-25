@@ -103,14 +103,24 @@ impl LazyNode {
 			let mut managerlock = manager.lock();
 			managerlock.fix_page(self.page_id).unwrap()
 		};
-		let page = pagelock.read();
-		let page_data = page.get_data();
-		if page_data[0] == LEAF_MARKER {
-			Leaf(LeafNode::new(page_data, manager))
-		} else if page_data[0] == BRANCH_MARKER {
-			Branch(BranchNode::new(page_data))
+		let mut is_leaf = false;
+
+		{
+			let page = pagelock.read();
+			let page_data = page.get_data();
+			if page_data[0] == LEAF_MARKER {
+				is_leaf = true;
+			} else if page_data[0] == BRANCH_MARKER {
+				is_leaf = false;
+			} else {
+				fail!("Invalid page type");
+			}
+		}
+		if is_leaf {
+			Leaf(LeafNode::new(manager, pagelock))
 		} else {
-			fail!("Trying to load unknown BTree node type")
+			//Branch(BranchNode::new(page_data))
+			fail!("TODO, implement this")
 		}
 	}
 
@@ -139,21 +149,27 @@ struct LeafNode<'a, K> {
 	capacity: uint,
 	entries: &'a mut [LeafEntry<K>],
 	manager: ConcurrentManager,
+	frame: buffer::ConcurrentFrame,
 }
 
 impl<'a, K: TotalOrd + Zero> LeafNode<'a, K> {
-	fn new(page: &[u8], manager: ConcurrentManager) -> LeafNode<'a, K> {
-		// first byte is a Leaf/Branch marker
-		let entry_size = size_of::<LeafEntry<K>>();
-		let entry_num = (page.len() - size_of::<u8>()) / entry_size;
+	fn new(manager: ConcurrentManager, frame: buffer::ConcurrentFrame) -> LeafNode<'a, K> {
+		let mut r = {
+			let framelock = frame.read();
+			let page = framelock.get_data();
+			// first byte is a Leaf/Branch marker
+			let entry_size = size_of::<LeafEntry<K>>();
+			let entry_num = (page.len() - size_of::<u8>()) / entry_size;
 
-		let mut r: &mut[LeafEntry<K>] = unsafe {
-			cast::transmute(
-				Slice::<LeafEntry<K>> {
-					data: page.as_ptr() as *() as *LeafEntry<K>,
-					len: entry_num,
-				}
-			)
+			let mut entries: &mut[LeafEntry<K>] = unsafe {
+				cast::transmute(
+					Slice::<LeafEntry<K>> {
+						data: page.as_ptr() as *() as *LeafEntry<K>,
+						len: entry_num,
+					}
+				)
+			};
+		entries
 		};
 
 		/* find slots that are used */
@@ -168,6 +184,7 @@ impl<'a, K: TotalOrd + Zero> LeafNode<'a, K> {
 			entries: r,
 			capacity: capacity,
 			manager: manager,
+			frame: frame,
 		}
 	}
 
@@ -214,6 +231,15 @@ impl<'a, K: TotalOrd + Zero> LeafNode<'a, K> {
 }
 
 // TODO implement Drop for LeafNode
+#[unsafe_destructor]
+impl<'a, K> Drop for LeafNode<'a, K> {
+	fn drop(&mut self) {
+		let mut manager = self.manager.lock();
+		println!("Ohai, unfixing page");
+		// TODO: figure out if page was modified since loading
+		manager.unfix_page(self.frame.clone(), true);
+	}
+}
 
 struct BranchNode<'a, K> {
 	capacity: uint,
@@ -290,9 +316,9 @@ fn simple_insert() {
 fn create_leaf_page() {
 	let p = Path::new(".");
 	let mut manager = buffer::BufferManager::new(1024, p.clone());
-	let pagelock = manager.fix_page(0).unwrap();
+	let pagelock = manager.fix_page(10).unwrap();
 	let page = pagelock.read();
-	let lp: LeafNode<u64> = LeafNode::new(page.get_data(), Rc::new(Mutex::new(manager)));
-	println!("lp len: {}", lp.entries.len());
+	//let lp: LeafNode<u64> = LeafNode::new(page.get_data(), Rc::new(Mutex::new(manager)), pagelock);
+	//println!("lp len: {}", lp.entries.len());
 	assert!(false);
 }
