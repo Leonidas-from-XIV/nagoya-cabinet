@@ -331,7 +331,7 @@ impl<'a, K: TotalOrd + Zero> BranchNode<'a, K> {
 
 	fn lookup(self, manager: ConcurrentManager, key: &K) -> Option<schema::TID> {
 		println!("Doing lookup in branch node");
-		let mut next_page = 0;
+		let mut next_page = None;
 		for i in range(0, self.entries.len()) {
 			// skip all empty fields
 			if self.entries[i].key.is_zero() && self.entries[i].page_id == 0 {
@@ -340,15 +340,20 @@ impl<'a, K: TotalOrd + Zero> BranchNode<'a, K> {
 			println!("Entry i {:?}, key {:?}", self.entries[i], self.entries[i].key);
 			if &self.entries[i].key <= key {
 				// found the branch into which to descend
-				next_page = self.entries[i].page_id;
+				next_page = Some(self.entries[i].page_id);
 				break;
 			}
 		}
-		let ln = LazyNode::new(next_page);
-		let node = ln.load(manager);
-		match node {
-			Branch(n) => n.lookup(self.manager.clone(), key),
-			Leaf(n) => n.lookup(key),
+		match next_page {
+			None => None,
+			Some(page_id) => {
+				let ln = LazyNode::new(page_id);
+				let node = ln.load(manager);
+				match node {
+					Branch(n) => n.lookup(self.manager.clone(), key),
+					Leaf(n) => n.lookup(key),
+				}
+			}
 		}
 	}
 }
@@ -373,6 +378,15 @@ fn simple_insert() {
 	println!("Lookup: {}", bt.lookup(&42));
 
 	assert!(false);
+}
+
+#[test]
+fn lookup_nonexisting() {
+	let p = Path::new(".");
+	let manager = buffer::BufferManager::new(1024, p.clone());
+	let bt = BTree::new(23, Rc::new(Mutex::new(manager)));
+	let result = bt.lookup(&42);
+	assert_eq!(result, None);
 }
 
 #[test]
