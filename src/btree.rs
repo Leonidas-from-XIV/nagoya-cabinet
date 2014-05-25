@@ -2,6 +2,8 @@ use std::cast;
 use std::mem::size_of;
 use std::raw::Slice;
 use std::num::Zero;
+use std::rc::Rc;
+use sync::Mutex;
 
 mod buffer;
 mod schema;
@@ -9,15 +11,18 @@ mod schema;
 static LEAF_MARKER: u8 = 0b111111111;
 static BRANCH_MARKER: u8 = 0b0;
 
+/* simple type alias to simplify signatures */
+type ConcurrentManager = Rc<Mutex<buffer::BufferManager>>;
+
 struct BTree<'a, K> {
 	segment: u64,
-	manager: &'a mut buffer::BufferManager,
+	manager: ConcurrentManager,
 	tree: LazyNode,
 	next_free_page: u64,
 }
 
 impl<'a, K: TotalOrd + Zero> BTree<'a, K> {
-	fn new<'b>(segment_id: u64, dummy: K, manager: &'b mut buffer::BufferManager) -> BTree<'b, K> {
+	fn new<'b>(segment_id: u64, manager: ConcurrentManager) -> BTree<'b, K> {
 		BTree {
 			segment: segment_id,
 			manager: manager,
@@ -26,10 +31,8 @@ impl<'a, K: TotalOrd + Zero> BTree<'a, K> {
 		}
 	}
 
-	//fn locate_page
-
 	fn insert(&mut self, key: K, value: schema::TID) {
-		let node = self.tree.load(self.manager);
+		let node = self.tree.load(self.manager.clone());
 		// try insertion and see if the root was split
 		let candidate = match node {
 			Branch(mut n) => n.insert_value(self, key, value),
@@ -51,7 +54,8 @@ impl<'a, K: TotalOrd + Zero> BTree<'a, K> {
 	fn create_branch_page(&mut self) -> LazyNode {
 		let next = self.next_page();
 		let page_path = buffer::join_segment(self.segment, next);
-		let pagelock = self.manager.fix_page(page_path).unwrap();
+		let mut manager = self.manager.lock();
+		let pagelock = manager.fix_page(page_path).unwrap();
 		let mut page = pagelock.write();
 		let data = page.get_mut_data();
 		data[0] = BRANCH_MARKER;
@@ -61,7 +65,8 @@ impl<'a, K: TotalOrd + Zero> BTree<'a, K> {
 	fn create_leaf_page(&mut self) -> LazyNode {
 		let next = self.next_page();
 		let page_path = buffer::join_segment(self.segment, next);
-		let pagelock = self.manager.fix_page(page_path).unwrap();
+		let mut manager = self.manager.lock();
+		let pagelock = manager.fix_page(page_path).unwrap();
 		let mut page = pagelock.write();
 		let data = page.get_mut_data();
 		// marker to be a leaf page
@@ -93,7 +98,8 @@ impl LazyNode {
 	 * As this is just a placeholder, return the actual node that his is
 	 * representing
 	 */
-	fn load<'a, K: TotalOrd + Zero>(&self, manager: &mut buffer::BufferManager) -> Node<'a, K> {
+	fn load<'a, K: TotalOrd + Zero>(&self, manager: ConcurrentManager) -> Node<'a, K> {
+		let mut manager = manager.lock();
 		let pagelock = manager.fix_page(self.page_id).unwrap();
 		let page = pagelock.read();
 		LazyNode::load_node(page.get_data())
@@ -206,6 +212,8 @@ impl<'a, K: TotalOrd + Zero> LeafNode<'a, K> {
 	}
 }
 
+// TODO implement Drop for LeafNode
+
 struct BranchNode<'a, K> {
 	capacity: uint,
 	entries: &'a mut [BranchEntry<K>],
@@ -254,7 +262,7 @@ impl<'a, K: TotalOrd + Zero> BranchNode<'a, K> {
 		let go_to_page = self.entries[place].page_id;
 		if go_to_page == 0 {
 			let lazy_node = tree.create_leaf_page();
-			let new_node = lazy_node.load(tree.manager);
+			let new_node = lazy_node.load(tree.manager.clone());
 			let split_candidate = match new_node {
 				Leaf(mut n) => n.insert_value(key, value),
 				Branch(_) => fail!("Did not create a leaf page"),
@@ -272,7 +280,7 @@ impl<'a, K: TotalOrd + Zero> BranchNode<'a, K> {
 fn simple_insert() {
 	let p = Path::new(".");
 	let mut manager = buffer::BufferManager::new(1024, p.clone());
-	let mut bt = BTree::new(23, 42, &mut manager);
+	let mut bt = BTree::new(23, Rc::new(Mutex::new(manager)));
 	bt.insert(42, schema::TID::new(0, 0));
 	assert!(false);
 }

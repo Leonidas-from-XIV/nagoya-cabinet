@@ -22,6 +22,8 @@ pub static PAGE_SIZE: uint = 4 * 1024;
  */
 pub static PAGE_BITS: uint = 32;
 
+type ConcurrentFrame = Arc<RWLock<BufferFrame>>; 
+
 pub struct BufferManager {
 	size: uint,
 	entries: HashMap<u64, BufferEntry>,
