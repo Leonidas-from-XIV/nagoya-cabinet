@@ -99,22 +99,21 @@ impl LazyNode {
 	 * representing
 	 */
 	fn load<'a, K: TotalOrd + Zero>(&self, manager: ConcurrentManager) -> Node<'a, K> {
-		let mut manager = manager.lock();
-		let pagelock = manager.fix_page(self.page_id).unwrap();
+		let pagelock = {
+			let mut managerlock = manager.lock();
+			managerlock.fix_page(self.page_id).unwrap()
+		};
 		let page = pagelock.read();
-		LazyNode::load_node(page.get_data())
-	}
-
-	/* helper method to load a Node tepending on the page marker */
-	fn load_node<'a, K: TotalOrd + Zero>(page: &[u8]) -> Node<'a, K> {
-		if page[0] == LEAF_MARKER {
-			Leaf(LeafNode::new(page))
-		} else if page[0] == BRANCH_MARKER {
-			Branch(BranchNode::new(page))
+		let page_data = page.get_data();
+		if page_data[0] == LEAF_MARKER {
+			Leaf(LeafNode::new(page_data, manager))
+		} else if page_data[0] == BRANCH_MARKER {
+			Branch(BranchNode::new(page_data))
 		} else {
 			fail!("Trying to load unknown BTree node type")
 		}
 	}
+
 }
 
 /* a node might either be an inner node (branch node) or a leaf node (LeafNode) */
@@ -139,10 +138,11 @@ struct BranchEntry<K> {
 struct LeafNode<'a, K> {
 	capacity: uint,
 	entries: &'a mut [LeafEntry<K>],
+	manager: ConcurrentManager,
 }
 
 impl<'a, K: TotalOrd + Zero> LeafNode<'a, K> {
-	fn new(page: &[u8]) -> LeafNode<'a, K> {
+	fn new(page: &[u8], manager: ConcurrentManager) -> LeafNode<'a, K> {
 		// first byte is a Leaf/Branch marker
 		let entry_size = size_of::<LeafEntry<K>>();
 		let entry_num = (page.len() - size_of::<u8>()) / entry_size;
@@ -166,7 +166,8 @@ impl<'a, K: TotalOrd + Zero> LeafNode<'a, K> {
 
 		LeafNode {
 			entries: r,
-			capacity: capacity
+			capacity: capacity,
+			manager: manager,
 		}
 	}
 
@@ -279,7 +280,7 @@ impl<'a, K: TotalOrd + Zero> BranchNode<'a, K> {
 #[test]
 fn simple_insert() {
 	let p = Path::new(".");
-	let mut manager = buffer::BufferManager::new(1024, p.clone());
+	let manager = buffer::BufferManager::new(1024, p.clone());
 	let mut bt = BTree::new(23, Rc::new(Mutex::new(manager)));
 	bt.insert(42, schema::TID::new(0, 0));
 	assert!(false);
@@ -291,7 +292,7 @@ fn create_leaf_page() {
 	let mut manager = buffer::BufferManager::new(1024, p.clone());
 	let pagelock = manager.fix_page(0).unwrap();
 	let page = pagelock.read();
-	let lp: LeafNode<u64> = LeafNode::new(page.get_data());
+	let lp: LeafNode<u64> = LeafNode::new(page.get_data(), Rc::new(Mutex::new(manager)));
 	println!("lp len: {}", lp.entries.len());
 	assert!(false);
 }

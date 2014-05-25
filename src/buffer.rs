@@ -31,7 +31,7 @@ pub struct BufferManager {
 }
 
 struct BufferEntry {
-	frame: Arc<RWLock<BufferFrame>>,
+	frame: ConcurrentFrame,
 	written: Cleanliness,
 }
 
@@ -176,7 +176,7 @@ impl BufferManager {
 		}
 	}
 	
-	pub fn fix_page(&mut self, page_id: u64) -> Option<Arc<RWLock<BufferFrame>>> {
+	pub fn fix_page(&mut self, page_id: u64) -> Option<ConcurrentFrame> {
 		if !self.entries.contains_key(&page_id) {
 			if !self.load_page(page_id) {
 				return None;
@@ -194,7 +194,7 @@ impl BufferManager {
 		Some(entry.frame.clone())
 	}
 
-	pub fn unfix_page(&mut self, frame: Arc<RWLock<BufferFrame>>, is_dirty: bool) {
+	pub fn unfix_page(&mut self, frame: ConcurrentFrame, is_dirty: bool) {
 		{
 			let mut frame = frame.write();
 			frame.fixed = match frame.fixed {
