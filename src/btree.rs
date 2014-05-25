@@ -8,7 +8,7 @@ use sync::Mutex;
 mod buffer;
 mod schema;
 
-static LEAF_MARKER: u8 = 0b111111111;
+static LEAF_MARKER: u8 = 0b11111111;
 static BRANCH_MARKER: u8 = 0b0;
 
 /* simple type alias to simplify signatures */
@@ -185,7 +185,7 @@ impl<'a, K: TotalOrd + Zero> LeafNode<'a, K> {
 			}
 		}
 
-		println!("Creating leaf node");
+		println!("Instantiating leaf node with capacity {}", capacity);
 		LeafNode {
 			entries: r,
 			capacity: capacity,
@@ -195,10 +195,10 @@ impl<'a, K: TotalOrd + Zero> LeafNode<'a, K> {
 	}
 
 	fn insert_value(&mut self, key: K, tid: schema::TID) -> Option<LazyNode> {
+		println!("Leaf insertion, remaining capacity {}", self.capacity);
 		if self.capacity == 0 {
 			// TODO split
 			fail!("Not implemented");
-			return None
 		}
 
 		// find place to insert
@@ -209,6 +209,7 @@ impl<'a, K: TotalOrd + Zero> LeafNode<'a, K> {
 		// and put it in
 		self.entries[location].key = key;
 		self.entries[location].tid = tid;
+		self.capacity -= 1;
 
 		// insertion went fine, done
 		None
@@ -218,7 +219,7 @@ impl<'a, K: TotalOrd + Zero> LeafNode<'a, K> {
 	fn find_slot(&self, key: &K) -> uint {
 		let mut found = 0;
 		for i in range(0, self.entries.len()) {
-			println!("Entry {:?}", self.entries[i]);
+			//println!("Entry {:?}", self.entries[i]);
 			if &self.entries[i].key > key {
 
 				found = i - 1;
@@ -251,7 +252,7 @@ impl<'a, K: TotalOrd + Zero> LeafNode<'a, K> {
 impl<'a, K> Drop for LeafNode<'a, K> {
 	fn drop(&mut self) {
 		let mut manager = self.manager.lock();
-		println!("Ohai, unfixing page");
+		//println!("Ohai, unfixing page");
 		// TODO: figure out if page was modified since loading
 		manager.unfix_page(self.frame.clone(), true);
 	}
@@ -310,11 +311,14 @@ impl<'a, K: TotalOrd + Zero> BranchNode<'a, K> {
 			if self.entries[i].page_id == 0 {
 				continue
 			}
-			println!("Entry i {:?}, key {:?}", self.entries[i], self.entries[i].key);
+			println!("Entry {:?}, key {:?}", self.entries[i], self.entries[i].key);
 			// TODO find place
 		}
+
 		let go_to_page = self.entries[place].page_id;
+		println!("go_to_page {}", go_to_page);
 		if go_to_page == 0 {
+			// there is no such page, but it should be created
 			let lazy_node = tree.create_leaf_page();
 			let new_node = lazy_node.load(tree.manager.clone());
 			let split_candidate = match new_node {
@@ -323,10 +327,15 @@ impl<'a, K: TotalOrd + Zero> BranchNode<'a, K> {
 			};
 			self.entries[place].page_id = lazy_node.page_id;
 			return split_candidate
+		} else {
+			let lazy_node = LazyNode::new(go_to_page);
+			let new_node = lazy_node.load(tree.manager.clone());
+			let split_candidate = match new_node {
+				Leaf(mut n) => n.insert_value(key, value),
+				Branch(mut n) => n.insert_value(tree, key, value),
+			};
+			return split_candidate
 		}
-
-		// currently not caring about splitting branch pages
-		None
 	}
 
 	fn lookup(self, manager: ConcurrentManager, key: &K) -> Option<schema::TID> {
@@ -337,7 +346,7 @@ impl<'a, K: TotalOrd + Zero> BranchNode<'a, K> {
 			if self.entries[i].key.is_zero() && self.entries[i].page_id == 0 {
 				continue
 			}
-			println!("Entry i {:?}, key {:?}", self.entries[i], self.entries[i].key);
+			println!("Entry {}: {:?}", i, self.entries[i]);
 			if &self.entries[i].key <= key {
 				// found the branch into which to descend
 				next_page = Some(self.entries[i].page_id);
@@ -364,7 +373,7 @@ impl<'a, K: TotalOrd + Zero> BranchNode<'a, K> {
 impl<'a, K> Drop for BranchNode<'a, K> {
 	fn drop(&mut self) {
 		let mut manager = self.manager.lock();
-		println!("Ohai, unfixing page");
+		//println!("Ohai, unfixing page");
 		// TODO: figure out if page was modified since loading
 		manager.unfix_page(self.frame.clone(), true);
 	}
@@ -386,8 +395,8 @@ fn split_insert() {
 	let p = Path::new(".");
 	let manager = buffer::BufferManager::new(1024, p.clone());
 	let mut bt = BTree::new(23, Rc::new(Mutex::new(manager)));
-	let some_tid = schema::TID::new(0, 0);
-	for i in range(0, 300) {
+	let some_tid = schema::TID::new(23, 42);
+	for i in range(0, 2) {
 		bt.insert(i, some_tid);
 		let res = bt.lookup(&i).unwrap();
 		assert_eq!(some_tid, res);
