@@ -330,7 +330,7 @@ impl<'a, K: TotalOrd + Zero> BranchNode<'a, K> {
 	}
 
 	fn lookup(self, manager: ConcurrentManager, key: &K) -> Option<schema::TID> {
-		println!("Doing lookup in branch node");
+		// find the page to descend to
 		let mut next_page = None;
 		for i in range(0, self.entries.len()) {
 			// skip all empty fields
@@ -344,7 +344,9 @@ impl<'a, K: TotalOrd + Zero> BranchNode<'a, K> {
 				break;
 			}
 		}
+
 		match next_page {
+			// if there is no page to descend to, it can't be found
 			None => None,
 			Some(page_id) => {
 				let ln = LazyNode::new(page_id);
@@ -375,9 +377,8 @@ fn simple_insert() {
 	let mut bt = BTree::new(23, Rc::new(Mutex::new(manager)));
 	let some_tid = schema::TID::new(0, 0);
 	bt.insert(42, some_tid);
-	println!("Lookup: {}", bt.lookup(&42));
-
-	assert!(false);
+	let res = bt.lookup(&42).unwrap();
+	assert_eq!(some_tid, res);
 }
 
 #[test]
