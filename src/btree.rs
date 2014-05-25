@@ -24,6 +24,7 @@ struct BTree<'a, K> {
 impl<'a, K: TotalOrd + Zero> BTree<'a, K> {
 	fn new<'b>(segment_id: u64, manager: ConcurrentManager) -> BTree<'b, K> {
 		let tree_base = buffer::join_segment(segment_id, 1);
+		// TODO read tree and next free page from page 0
 		BTree {
 			segment: segment_id,
 			manager: manager,
@@ -79,8 +80,12 @@ impl<'a, K: TotalOrd + Zero> BTree<'a, K> {
 	fn erase(&mut self, key: K) {
 	}
 
-	fn lookup(self, key: K) -> Option<schema::TID> {
-		None
+	fn lookup(self, key: &K) -> Option<schema::TID> {
+		let node = self.tree.load(self.manager.clone());
+		match node {
+			Branch(n) => n.lookup(self.manager.clone(), key),
+			Leaf(n) => n.lookup(key),
+		}
 	}
 }
 
@@ -231,6 +236,15 @@ impl<'a, K: TotalOrd + Zero> LeafNode<'a, K> {
 			self.entries.swap(i, last_elem);
 		}
 	}
+
+	fn lookup(self, key: &K) -> Option<schema::TID> {
+		for i in range(0, self.entries.len()) {
+			if &self.entries[i].key == key {
+				return Some(self.entries[i].tid)
+			}
+		}
+		None
+	}
 }
 
 #[unsafe_destructor]
@@ -314,6 +328,29 @@ impl<'a, K: TotalOrd + Zero> BranchNode<'a, K> {
 		// currently not caring about splitting branch pages
 		None
 	}
+
+	fn lookup(self, manager: ConcurrentManager, key: &K) -> Option<schema::TID> {
+		println!("Doing lookup in branch node");
+		let mut next_page = 0;
+		for i in range(0, self.entries.len()) {
+			// skip all empty fields
+			if self.entries[i].key.is_zero() && self.entries[i].page_id == 0 {
+				continue
+			}
+			println!("Entry i {:?}, key {:?}", self.entries[i], self.entries[i].key);
+			if &self.entries[i].key <= key {
+				// found the branch into which to descend
+				next_page = self.entries[i].page_id;
+				break;
+			}
+		}
+		let ln = LazyNode::new(next_page);
+		let node = ln.load(manager);
+		match node {
+			Branch(n) => n.lookup(self.manager.clone(), key),
+			Leaf(n) => n.lookup(key),
+		}
+	}
 }
 
 #[unsafe_destructor]
@@ -331,7 +368,10 @@ fn simple_insert() {
 	let p = Path::new(".");
 	let manager = buffer::BufferManager::new(1024, p.clone());
 	let mut bt = BTree::new(23, Rc::new(Mutex::new(manager)));
-	bt.insert(42, schema::TID::new(0, 0));
+	let some_tid = schema::TID::new(0, 0);
+	bt.insert(42, some_tid);
+	println!("Lookup: {}", bt.lookup(&42));
+
 	assert!(false);
 }
 
