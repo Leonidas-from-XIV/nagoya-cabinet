@@ -23,10 +23,11 @@ struct BTree<'a, K> {
 
 impl<'a, K: TotalOrd + Zero> BTree<'a, K> {
 	fn new<'b>(segment_id: u64, manager: ConcurrentManager) -> BTree<'b, K> {
+		let tree_base = buffer::join_segment(segment_id, 1);
 		BTree {
 			segment: segment_id,
 			manager: manager,
-			tree: LazyNode::new(1),
+			tree: LazyNode::new(tree_base),
 			next_free_page: 2,
 		}
 	}
@@ -158,11 +159,12 @@ impl<'a, K: TotalOrd + Zero> LeafNode<'a, K> {
 			// first byte is a Leaf/Branch marker
 			let entry_size = size_of::<LeafEntry<K>>();
 			let entry_num = (page.len() - size_of::<u8>()) / entry_size;
+			let start_from = entry_size;
 
 			let mut entries: &mut[LeafEntry<K>] = unsafe {
 				cast::transmute(
 					Slice::<LeafEntry<K>> {
-						data: page.as_ptr() as *() as *LeafEntry<K>,
+						data: page.slice_from(start_from).as_ptr() as *() as *LeafEntry<K>,
 						len: entry_num,
 					}
 				)
@@ -196,6 +198,7 @@ impl<'a, K: TotalOrd + Zero> LeafNode<'a, K> {
 
 		// find place to insert
 		let location = self.find_slot(&key);
+		println!("Location found: {}", location);
 		// free that spot
 		self.shift_from(location);
 		// and put it in
@@ -212,6 +215,7 @@ impl<'a, K: TotalOrd + Zero> LeafNode<'a, K> {
 		for i in range(0, self.entries.len()) {
 			println!("Entry {:?}", self.entries[i]);
 			if &self.entries[i].key > key {
+
 				found = i - 1;
 				break;
 			}
@@ -254,10 +258,11 @@ impl<'a, K: TotalOrd + Zero> BranchNode<'a, K> {
 
 			let entry_size = size_of::<BranchEntry<K>>();
 			let entry_num = (page.len() - size_of::<u8>()) / entry_size;
+			let start_from = entry_size;
 			let mut r: &mut [BranchEntry<K>] = unsafe {
 				cast::transmute(
 					Slice::<BranchEntry<K>> {
-						data: page.as_ptr() as *() as *BranchEntry<K>,
+						data: page.slice_from(start_from).as_ptr() as *() as *BranchEntry<K>,
 						len: entry_num,
 					}
 				)
