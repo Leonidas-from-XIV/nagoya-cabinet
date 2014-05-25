@@ -88,7 +88,6 @@ struct LazyNode {
 	page_id: u64,
 }
 
-// TODO implement Drop to unfix page
 impl LazyNode {
 	fn new(page_id: u64) -> LazyNode {
 		LazyNode {page_id: page_id}
@@ -103,8 +102,8 @@ impl LazyNode {
 			let mut managerlock = manager.lock();
 			managerlock.fix_page(self.page_id).unwrap()
 		};
-		let mut is_leaf = false;
 
+		let mut is_leaf = false;
 		{
 			let page = pagelock.read();
 			let page_data = page.get_data();
@@ -119,8 +118,7 @@ impl LazyNode {
 		if is_leaf {
 			Leaf(LeafNode::new(manager, pagelock))
 		} else {
-			//Branch(BranchNode::new(page_data))
-			fail!("TODO, implement this")
+			Branch(BranchNode::new(manager, pagelock))
 		}
 	}
 
@@ -169,7 +167,7 @@ impl<'a, K: TotalOrd + Zero> LeafNode<'a, K> {
 					}
 				)
 			};
-		entries
+			entries
 		};
 
 		/* find slots that are used */
@@ -180,6 +178,7 @@ impl<'a, K: TotalOrd + Zero> LeafNode<'a, K> {
 			}
 		}
 
+		println!("Creating leaf node");
 		LeafNode {
 			entries: r,
 			capacity: capacity,
@@ -230,7 +229,6 @@ impl<'a, K: TotalOrd + Zero> LeafNode<'a, K> {
 	}
 }
 
-// TODO implement Drop for LeafNode
 #[unsafe_destructor]
 impl<'a, K> Drop for LeafNode<'a, K> {
 	fn drop(&mut self) {
@@ -244,19 +242,27 @@ impl<'a, K> Drop for LeafNode<'a, K> {
 struct BranchNode<'a, K> {
 	capacity: uint,
 	entries: &'a mut [BranchEntry<K>],
+	manager: ConcurrentManager,
+	frame: buffer::ConcurrentFrame,
 }
 
 impl<'a, K: TotalOrd + Zero> BranchNode<'a, K> {
-	fn new(page: &[u8]) -> BranchNode<'a, K> {
-		let entry_size = size_of::<BranchEntry<K>>();
-		let entry_num = (page.len() - size_of::<u8>()) / entry_size;
-		let mut r: &mut [BranchEntry<K>] = unsafe {
-			cast::transmute(
-				Slice::<BranchEntry<K>> {
-					data: page.as_ptr() as *() as *BranchEntry<K>,
-					len: entry_num,
-				}
-			)
+	fn new(manager: ConcurrentManager, frame: buffer::ConcurrentFrame) -> BranchNode<'a, K> {
+		let mut r = {
+			let framelock = frame.read();
+			let page = framelock.get_data();
+
+			let entry_size = size_of::<BranchEntry<K>>();
+			let entry_num = (page.len() - size_of::<u8>()) / entry_size;
+			let mut r: &mut [BranchEntry<K>] = unsafe {
+				cast::transmute(
+					Slice::<BranchEntry<K>> {
+						data: page.as_ptr() as *() as *BranchEntry<K>,
+						len: entry_num,
+					}
+				)
+			};
+			r
 		};
 
 		/* find slots that are used */
@@ -271,7 +277,9 @@ impl<'a, K: TotalOrd + Zero> BranchNode<'a, K> {
 
 		BranchNode {
 			entries: r,
-			capacity: capacity
+			capacity: capacity,
+			manager: manager,
+			frame: frame,
 		}
 	}
 
@@ -300,6 +308,16 @@ impl<'a, K: TotalOrd + Zero> BranchNode<'a, K> {
 
 		// currently not caring about splitting branch pages
 		None
+	}
+}
+
+#[unsafe_destructor]
+impl<'a, K> Drop for BranchNode<'a, K> {
+	fn drop(&mut self) {
+		let mut manager = self.manager.lock();
+		println!("Ohai, unfixing page");
+		// TODO: figure out if page was modified since loading
+		manager.unfix_page(self.frame.clone(), true);
 	}
 }
 
