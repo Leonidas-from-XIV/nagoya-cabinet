@@ -21,7 +21,7 @@ struct BTree<'a, K> {
 	next_free_page: u64,
 }
 
-impl<'a, K: TotalOrd + Zero> BTree<'a, K> {
+impl<'a, K: TotalOrd + Zero + Clone> BTree<'a, K> {
 	fn new<'b>(segment_id: u64, manager: ConcurrentManager) -> BTree<'b, K> {
 		let tree_base = buffer::join_segment(segment_id, 1);
 		// TODO read tree and next free page from page 0
@@ -106,7 +106,7 @@ impl LazyNode {
 	 * As this is just a placeholder, return the actual node that his is
 	 * representing
 	 */
-	fn load<'a, K: TotalOrd + Zero>(&self, manager: ConcurrentManager) -> Node<'a, K> {
+	fn load<'a, K: TotalOrd + Zero + Clone>(&self, manager: ConcurrentManager) -> Node<'a, K> {
 		let pagelock = {
 			let mut managerlock = manager.lock();
 			managerlock.fix_page(self.page_id).unwrap()
@@ -159,7 +159,7 @@ struct LeafNode<'a, K> {
 	frame: buffer::ConcurrentFrame,
 }
 
-impl<'a, K: TotalOrd + Zero> LeafNode<'a, K> {
+impl<'a, K: TotalOrd + Zero + Clone> LeafNode<'a, K> {
 	fn new(manager: ConcurrentManager, frame: buffer::ConcurrentFrame) -> LeafNode<'a, K> {
 		let mut r = {
 			let framelock = frame.read();
@@ -256,7 +256,7 @@ impl<'a, K: TotalOrd + Zero> LeafNode<'a, K> {
 impl<'a, K> Drop for LeafNode<'a, K> {
 	fn drop(&mut self) {
 		let mut manager = self.manager.lock();
-		println!("Writing back leaf page {:?}", self.frame);
+		//println!("Writing back leaf page {:?}", self.frame);
 		// TODO: figure out if page was modified since loading
 		manager.unfix_page(self.frame.clone(), true);
 	}
@@ -269,7 +269,7 @@ struct BranchNode<'a, K> {
 	frame: buffer::ConcurrentFrame,
 }
 
-impl<'a, K: TotalOrd + Zero> BranchNode<'a, K> {
+impl<'a, K: TotalOrd + Zero + Clone> BranchNode<'a, K> {
 	fn new(manager: ConcurrentManager, frame: buffer::ConcurrentFrame) -> BranchNode<'a, K> {
 		let mut r = {
 			let framelock = frame.read();
@@ -309,15 +309,18 @@ impl<'a, K: TotalOrd + Zero> BranchNode<'a, K> {
 
 	/* might return a new branch node if this one was split */
 	fn insert_value(&mut self, tree: &mut BTree<K>, key: K, value: schema::TID) -> Option<LazyNode> {
-		let mut place = 0;
 		// locate the place where to insert
+		let mut place = 0;
 		for i in range(0, self.entries.len()) {
 			if self.entries[i].page_id == 0 {
 				continue
 			}
-			println!("Entry {:?}, key {:?}", self.entries[i], self.entries[i].key);
-			// TODO find place
+			if key <= self.entries[i].key {
+				place = i;
+				break;
+			}
 		}
+		println!("Found place to insert, {}, containing {:?}", place, self.entries[place]);
 
 		let go_to_page = self.entries[place].page_id;
 		println!("go_to_page {}", go_to_page);
@@ -326,10 +329,11 @@ impl<'a, K: TotalOrd + Zero> BranchNode<'a, K> {
 			let lazy_node = tree.create_leaf_page();
 			let new_node = lazy_node.load(tree.manager.clone());
 			let split_candidate = match new_node {
-				Leaf(mut n) => n.insert_value(key, value),
+				Leaf(mut n) => n.insert_value(key.clone(), value),
 				Branch(_) => fail!("Did not create a leaf page"),
 			};
 			self.entries[place].page_id = lazy_node.page_id;
+			self.entries[place].key = key;
 			return split_candidate
 		} else {
 			let lazy_node = LazyNode::new(go_to_page);
