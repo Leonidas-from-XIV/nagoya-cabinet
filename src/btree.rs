@@ -34,6 +34,9 @@ impl<'a, K: TotalOrd + Zero> BTree<'a, K> {
 	}
 
 	fn insert(&mut self, key: K, value: schema::TID) {
+		// it is not allowed for the key to be the Zero value, that is used
+		// as marker for invalid data
+		assert!(!key.is_zero());
 		let node = self.tree.load(self.manager.clone());
 		// try insertion and see if the root was split
 		let candidate = match node {
@@ -180,6 +183,7 @@ impl<'a, K: TotalOrd + Zero> LeafNode<'a, K> {
 		/* find slots that are used */
 		let mut capacity = r.len();
 		for i in range(0, r.len()) {
+			//println!("Entry {:?}", r[i]);
 			if !r[i].key.is_zero() && !r[i].tid.is_invalid() {
 				capacity -= 1;
 			}
@@ -252,7 +256,7 @@ impl<'a, K: TotalOrd + Zero> LeafNode<'a, K> {
 impl<'a, K> Drop for LeafNode<'a, K> {
 	fn drop(&mut self) {
 		let mut manager = self.manager.lock();
-		//println!("Ohai, unfixing page");
+		println!("Writing back leaf page {:?}", self.frame);
 		// TODO: figure out if page was modified since loading
 		manager.unfix_page(self.frame.clone(), true);
 	}
@@ -396,7 +400,7 @@ fn split_insert() {
 	let manager = buffer::BufferManager::new(1024, p.clone());
 	let mut bt = BTree::new(23, Rc::new(Mutex::new(manager)));
 	let some_tid = schema::TID::new(23, 42);
-	for i in range(0, 2) {
+	for i in range(1, 3) {
 		bt.insert(i, some_tid);
 		let res = bt.lookup(&i).unwrap();
 		assert_eq!(some_tid, res);
