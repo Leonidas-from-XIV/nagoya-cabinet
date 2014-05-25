@@ -271,7 +271,8 @@ pub fn join_segment(segment: u64, page: u64) -> u64 {
 	// TODO do proper masking before
 	let high = segment << PAGE_BITS;
 	let low = page;
-	high & low
+	println!("Joining {} with {} into {}", segment, page, high ^ low);
+	high ^ low
 }
 
 #[test]
