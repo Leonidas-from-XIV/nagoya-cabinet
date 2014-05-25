@@ -80,7 +80,7 @@ impl<'a, K: TotalOrd + Zero> BTree<'a, K> {
 	fn erase(&mut self, key: K) {
 	}
 
-	fn lookup(self, key: &K) -> Option<schema::TID> {
+	fn lookup(&self, key: &K) -> Option<schema::TID> {
 		let node = self.tree.load(self.manager.clone());
 		match node {
 			Branch(n) => n.lookup(self.manager.clone(), key),
@@ -379,6 +379,20 @@ fn simple_insert() {
 	bt.insert(42, some_tid);
 	let res = bt.lookup(&42).unwrap();
 	assert_eq!(some_tid, res);
+}
+
+#[test]
+fn split_insert() {
+	let p = Path::new(".");
+	let manager = buffer::BufferManager::new(1024, p.clone());
+	let mut bt = BTree::new(23, Rc::new(Mutex::new(manager)));
+	let some_tid = schema::TID::new(0, 0);
+	for i in range(0, 300) {
+		bt.insert(i, some_tid);
+		let res = bt.lookup(&i).unwrap();
+		assert_eq!(some_tid, res);
+	}
+	assert!(false);
 }
 
 #[test]
