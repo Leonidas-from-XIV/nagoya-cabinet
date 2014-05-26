@@ -45,7 +45,7 @@ impl<'a, K: Keyish> BTree<'a, K> {
 		// try insertion and see if the root was split
 		let candidate = match node {
 			Branch(mut n) => n.insert_value(self, key, value),
-			Leaf(mut n) => n.insert_value(key, value),
+			Leaf(mut n) => n.insert_value(self, key, value),
 		};
 		// set new tree root if it was split
 		match candidate {
@@ -203,11 +203,33 @@ impl<'a, K: Keyish> LeafNode<'a, K> {
 		}
 	}
 
-	fn insert_value(&mut self, key: K, tid: schema::TID) -> Option<Overflowed<K>> {
+	fn insert_value(&mut self, tree: &mut BTree<K>, key: K, tid: schema::TID) -> Option<Overflowed<K>> {
 		println!("Leaf insertion, remaining capacity {}", self.capacity);
 		if self.capacity == 0 {
-			// TODO split
-			fail!("Not implemented");
+			let lazy_node = tree.create_leaf_page();
+			let new_node: Node<K> = lazy_node.load(self.manager.clone());
+			let mut new_leaf = match new_node {
+				Leaf(n) => n,
+				Branch(_) => fail!("Got branch node where leaf was expected"),
+			};
+			let num_elements_to_move = self.entries.len()/2;
+			let maximum = self.entries[num_elements_to_move].key.clone();
+
+			// copy them over first
+			for i in range(0, num_elements_to_move) {
+				new_leaf.insert_value(tree,
+					self.entries[i].key.clone(),
+					self.entries[i].tid);
+			}
+			// erase them second
+			for i in range(0, num_elements_to_move).rev() {
+				let k = self.entries[i].key.clone();
+				self.erase(&k);
+			}
+
+			let overflow = Overflowed(maximum, lazy_node.page_id);
+			println!("Overflow: {:?}", overflow);
+			return Some(overflow);
 		}
 
 		// find place to insert
@@ -222,6 +244,18 @@ impl<'a, K: Keyish> LeafNode<'a, K> {
 
 		// insertion went fine, done
 		None
+	}
+
+	fn erase(&mut self, key: &K) {
+		for i in range(0, self.entries.len()) {
+			if &self.entries[i].key == key {
+				self.entries[i].key = Zero::zero();
+				self.entries[i].tid = schema::TID::new(0, 0);
+				self.capacity += 1;
+				self.shift_to(i);
+				break;
+			}
+		}
 	}
 
 	/* finds the location at which a key should be inserted */
@@ -260,9 +294,16 @@ impl<'a, K: Keyish> LeafNode<'a, K> {
 		}
 	}
 
+	fn shift_to(&mut self, index: uint) {
+		let last_elem = self.entries.len() - 1;
+		for i in range(index, last_elem - 1) {
+			self.entries.swap(i, i+1);
+		}
+	}
+
 	fn lookup(self, key: &K) -> Option<schema::TID> {
 		for i in range(0, self.entries.len()) {
-			//println!("Checking {:?} for {:?}", self.entries[i], key);
+			println!("Checking {:?} for {:?}", self.entries[i], key);
 			if &self.entries[i].key == key {
 				return Some(self.entries[i].tid)
 			}
@@ -330,22 +371,50 @@ impl<'a, K: Keyish> BranchNode<'a, K> {
 		if self.capacity == 0 {
 			fail!("splitting branches TODO");
 		}
-		let mut next_free = None;
-		for i in range(0, self.entries.len()) {
-			if self.entries[i].page_id == 0 {
-				next_free = Some(i);
-				break;
-			}
-		}
-		let index = match next_free {
-			Some(index) => index,
-			None => fail!("Didn't find a free place to insert"),
-		};
+		let index = self.find_slot(&key);
 		println!("Adding new leaf node at {}", index);
+		self.shift_from(index);
+
 		self.entries[index].page_id = value;
 		self.entries[index].key = key;
 		self.capacity -= 1;
 		None
+	}
+
+	// duplicated from LeafNode, Rust doesn't do inheritance
+	fn find_slot(&self, key: &K) -> uint {
+		let mut found = None;
+		for i in range(0, self.entries.len()) {
+			//println!("Checking {:?} against {:?}", key, self.entries[i].key);
+			if self.entries[i].key.is_zero() {
+				found = Some(i);
+				break;
+			}
+			// there is no prev element to compare
+			if i == 0 {
+				if key < &self.entries[i].key {
+					found = Some(i);
+					break;
+				}
+				continue;
+			}
+
+			if &self.entries[i - 1].key < key && key < &self.entries[i].key {
+				found = Some(i);
+				break;
+			}
+		}
+
+		found.unwrap()
+	}
+
+	// duplicated from LeafNode
+	fn shift_from(&mut self, index: uint) {
+		// actually, this rotates right by 1 starting from index
+		let last_elem = self.entries.len() - 1;
+		for i in range(index, last_elem) {
+			self.entries.swap(i, last_elem);
+		}
 	}
 
 	/* might return a new branch node if this one was split */
@@ -370,7 +439,7 @@ impl<'a, K: Keyish> BranchNode<'a, K> {
 				let lazy_node = tree.create_leaf_page();
 				let new_node = lazy_node.load(tree.manager.clone());
 				match new_node {
-					Leaf(mut n) => n.insert_value(key.clone(), value),
+					Leaf(mut n) => n.insert_value(tree, key.clone(), value),
 					Branch(_) => fail!("Did not create a leaf page"),
 				};
 				self.insert_branch(tree, key, lazy_node.page_id)
@@ -379,11 +448,15 @@ impl<'a, K: Keyish> BranchNode<'a, K> {
 			Some(index) => {
 				let lazy_node = LazyNode::new(self.entries[index].page_id);
 				let new_node = lazy_node.load(tree.manager.clone());
-				let split_candidate = match new_node {
-					Leaf(mut n) => n.insert_value(key, value),
+				let overflowed = match new_node {
+					Leaf(mut n) => n.insert_value(tree, key, value),
 					Branch(mut n) => n.insert_value(tree, key, value),
 				};
-				return split_candidate
+				println!("Overflowed: {:?}", overflowed);
+				match overflowed {
+					None => None,
+					Some(Overflowed(max, page)) => self.insert_branch(tree, max, page),
+				}
 			}
 		}
 	}
@@ -396,13 +469,20 @@ impl<'a, K: Keyish> BranchNode<'a, K> {
 			if self.entries[i].key.is_zero() && self.entries[i].page_id == 0 {
 				continue
 			}
+			if i == 0 {
+				if key <= &self.entries[i].key {
+					next_page = Some(self.entries[i].page_id);
+				}
+				continue;
+			}
 			println!("Entry {}: {:?}", i, self.entries[i]);
-			if key <= &self.entries[i].key {
+			if &self.entries[i-1].key < key && key <= &self.entries[i].key {
 				// found the branch into which to descend
 				next_page = Some(self.entries[i].page_id);
 				break;
 			}
 		}
+		println!("Going for {:?}", next_page);
 
 		match next_page {
 			// if there is no page to descend to, it can't be found
@@ -447,11 +527,11 @@ fn split_leaf_insert() {
 	let mut bt = BTree::new(23, Rc::new(Mutex::new(manager)));
 	let some_tid = schema::TID::new(23, 42);
 	bt.insert(301, some_tid);
-	for i in range(1, 5) {
+	for i in range(1, 260) {
 		bt.insert(i, some_tid);
 		let res = match bt.lookup(&i) {
 			Some(v) => v,
-			None => fail!("Couldn't find previously inserted value"),
+			None => fail!("Couldn't find value previously inserted into {}", i),
 		};
 		assert_eq!(some_tid, res);
 	}
