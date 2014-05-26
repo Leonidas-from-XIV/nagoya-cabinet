@@ -378,16 +378,69 @@ impl<'a, K: Keyish> BranchNode<'a, K> {
 
 	fn insert_branch(&mut self, tree: &mut BTree<K>, key: K, value: u64) -> Option<Overflowed<K>> {
 		if self.capacity == 0 {
-			fail!("splitting branches TODO");
+			let lazy_node = tree.create_branch_page();
+			let new_node = lazy_node.load(self.manager.clone());
+			let mut new_branch = match new_node {
+				Branch(b) => b,
+				Leaf(_) => fail!("Got leaf node where branch was expected"),
+			};
+			let num_elements_to_move = self.entries.len()/2;
+			let maximum = self.entries[num_elements_to_move].key.clone();
+			// copy them over first
+			for i in range(0, num_elements_to_move) {
+				new_branch.insert_branch(tree,
+					self.entries[i].key.clone(),
+					self.entries[i].page_id);
+			}
+			// erase them second
+			for i in range(0, num_elements_to_move).rev() {
+				let k = self.entries[i].key.clone();
+				self.erase(&k);
+			}
+
+			// now let's actually insert that value
+			if key <= maximum {
+				// insert into new
+				new_branch.insert_branch(tree, key, value);
+			} else {
+				// insert into this
+				self.insert_branch(tree, key, value);
+			}
+			// no worries, those can't overflow
+
+			let overflow = Overflowed(maximum, lazy_node.page_id);
+			println!("Overflow {:?}", overflow);
+			//fail!("splitting branches TODO");
+			return Some(overflow);
 		}
 		let index = self.find_slot(&key);
-		println!("Adding new leaf node at {}", index);
+		println!("Adding new page reference at {}", index);
 		self.shift_from(index);
 
 		self.entries[index].page_id = value;
 		self.entries[index].key = key;
 		self.capacity -= 1;
 		None
+	}
+
+	fn erase(&mut self, key: &K) {
+		for i in range(0, self.entries.len()) {
+			if &self.entries[i].key == key {
+				self.entries[i].key = Zero::zero();
+				self.entries[i].page_id = 0;
+				self.capacity += 1;
+				self.shift_to(i);
+				break;
+			}
+		}
+	}
+
+	// duplicated from LeafNode
+	fn shift_to(&mut self, index: uint) {
+		let last_elem = self.entries.len() - 1;
+		for i in range(index, last_elem) {
+			self.entries.swap(i, i+1);
+		}
 	}
 
 	// duplicated from LeafNode, Rust doesn't do inheritance
