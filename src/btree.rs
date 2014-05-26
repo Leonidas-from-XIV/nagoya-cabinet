@@ -314,39 +314,51 @@ impl<'a, K: Keyish> BranchNode<'a, K> {
 	/* might return a new branch node if this one was split */
 	fn insert_value(&mut self, tree: &mut BTree<K>, key: K, value: schema::TID) -> Option<LazyNode> {
 		// locate the place where to insert
-		let mut place = 0;
+		let mut place = None;
 		for i in range(0, self.entries.len()) {
 			if self.entries[i].page_id == 0 {
 				continue
 			}
 			if key <= self.entries[i].key {
-				place = i;
+				println!("Found candidate, {:?} <= {:?}", key, self.entries[i].key);
+				place = Some(i);
 				break;
 			}
 		}
-		println!("Found place to insert, {}, containing {:?}", place, self.entries[place]);
-
-		let go_to_page = self.entries[place].page_id;
-		println!("go_to_page {}", go_to_page);
-		if go_to_page == 0 {
-			// there is no such page, but it should be created
-			let lazy_node = tree.create_leaf_page();
-			let new_node = lazy_node.load(tree.manager.clone());
-			let split_candidate = match new_node {
-				Leaf(mut n) => n.insert_value(key.clone(), value),
-				Branch(_) => fail!("Did not create a leaf page"),
-			};
-			self.entries[place].page_id = lazy_node.page_id;
-			self.entries[place].key = key;
-			return split_candidate
-		} else {
-			let lazy_node = LazyNode::new(go_to_page);
-			let new_node = lazy_node.load(tree.manager.clone());
-			let split_candidate = match new_node {
-				Leaf(mut n) => n.insert_value(key, value),
-				Branch(mut n) => n.insert_value(tree, key, value),
-			};
-			return split_candidate
+		match place {
+			None => {
+				// there is no such page, but it should be created
+				let lazy_node = tree.create_leaf_page();
+				let new_node = lazy_node.load(tree.manager.clone());
+				let split_candidate = match new_node {
+					Leaf(mut n) => n.insert_value(key.clone(), value),
+					Branch(_) => fail!("Did not create a leaf page"),
+				};
+				let mut next_free = None;
+				for i in range(0, self.entries.len()) {
+					if self.entries[i].page_id == 0 {
+						next_free = Some(i);
+						break;
+					}
+				}
+				let index = match next_free {
+					Some(index) => index,
+					None => fail!("Didn't find a free place to insert"),
+				};
+				println!("Adding new leaf node at {}", index);
+				self.entries[index].page_id = lazy_node.page_id;
+				self.entries[index].key = key;
+				return split_candidate
+			},
+			Some(index) => {
+				let lazy_node = LazyNode::new(self.entries[index].page_id);
+				let new_node = lazy_node.load(tree.manager.clone());
+				let split_candidate = match new_node {
+					Leaf(mut n) => n.insert_value(key, value),
+					Branch(mut n) => n.insert_value(tree, key, value),
+				};
+				return split_candidate
+			}
 		}
 	}
 
@@ -410,7 +422,10 @@ fn split_insert() {
 	let some_tid = schema::TID::new(23, 42);
 	for i in range(1, 3) {
 		bt.insert(i, some_tid);
-		let res = bt.lookup(&i).unwrap();
+		let res = match bt.lookup(&i) {
+			Some(v) => v,
+			None => fail!("Couldn't find previously inserted value"),
+		};
 		assert_eq!(some_tid, res);
 	}
 	assert!(false);
