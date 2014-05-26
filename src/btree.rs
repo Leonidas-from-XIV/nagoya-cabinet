@@ -49,7 +49,7 @@ impl<'a, K: Keyish> BTree<'a, K> {
 		};
 		// set new tree root if it was split
 		match candidate {
-			Some(new_node) => self.tree = new_node,
+			Some(new_node) => fail!("TODO: root split"),
 			None => (),
 		}
 	}
@@ -155,6 +155,7 @@ struct BranchEntry<K> {
 	page_id: u64,
 }
 
+struct Overflowed<K>(K, u64);
 
 struct LeafNode<'a, K> {
 	capacity: uint,
@@ -202,7 +203,7 @@ impl<'a, K: Keyish> LeafNode<'a, K> {
 		}
 	}
 
-	fn insert_value(&mut self, key: K, tid: schema::TID) -> Option<LazyNode> {
+	fn insert_value(&mut self, key: K, tid: schema::TID) -> Option<Overflowed<K>> {
 		println!("Leaf insertion, remaining capacity {}", self.capacity);
 		if self.capacity == 0 {
 			// TODO split
@@ -225,16 +226,29 @@ impl<'a, K: Keyish> LeafNode<'a, K> {
 
 	/* finds the location at which a key should be inserted */
 	fn find_slot(&self, key: &K) -> uint {
-		let mut found = 0;
+		let mut found = None;
 		for i in range(0, self.entries.len()) {
-			//println!("Entry {:?}", self.entries[i]);
-			if &self.entries[i].key > key {
+			//println!("Checking {:?} against {:?}", key, self.entries[i].key);
+			if self.entries[i].key.is_zero() {
+				found = Some(i);
+				break;
+			}
+			// there is no prev element to compare
+			if i == 0 {
+				if key < &self.entries[i].key {
+					found = Some(i);
+					break;
+				}
+				continue;
+			}
 
-				found = i - 1;
+			if &self.entries[i - 1].key < key && key < &self.entries[i].key {
+				found = Some(i);
 				break;
 			}
 		}
-		found
+
+		found.unwrap()
 	}
 
 	/* moves all items from `index` one number back */
@@ -248,7 +262,7 @@ impl<'a, K: Keyish> LeafNode<'a, K> {
 
 	fn lookup(self, key: &K) -> Option<schema::TID> {
 		for i in range(0, self.entries.len()) {
-			println!("Checking {:?} for {:?}", self.entries[i], key);
+			//println!("Checking {:?} for {:?}", self.entries[i], key);
 			if &self.entries[i].key == key {
 				return Some(self.entries[i].tid)
 			}
@@ -312,8 +326,30 @@ impl<'a, K: Keyish> BranchNode<'a, K> {
 		}
 	}
 
+	fn insert_branch(&mut self, tree: &mut BTree<K>, key: K, value: u64) -> Option<Overflowed<K>> {
+		if self.capacity == 0 {
+			fail!("splitting branches TODO");
+		}
+		let mut next_free = None;
+		for i in range(0, self.entries.len()) {
+			if self.entries[i].page_id == 0 {
+				next_free = Some(i);
+				break;
+			}
+		}
+		let index = match next_free {
+			Some(index) => index,
+			None => fail!("Didn't find a free place to insert"),
+		};
+		println!("Adding new leaf node at {}", index);
+		self.entries[index].page_id = value;
+		self.entries[index].key = key;
+		self.capacity -= 1;
+		None
+	}
+
 	/* might return a new branch node if this one was split */
-	fn insert_value(&mut self, tree: &mut BTree<K>, key: K, value: schema::TID) -> Option<LazyNode> {
+	fn insert_value(&mut self, tree: &mut BTree<K>, key: K, value: schema::TID) -> Option<Overflowed<K>> {
 		// locate the place where to insert
 		let mut place = None;
 		for i in range(0, self.entries.len()) {
@@ -326,31 +362,20 @@ impl<'a, K: Keyish> BranchNode<'a, K> {
 				break;
 			}
 		}
+
 		match place {
+			/* no already existing place to insert exists */
 			None => {
 				// there is no such page, but it should be created
 				let lazy_node = tree.create_leaf_page();
 				let new_node = lazy_node.load(tree.manager.clone());
-				let split_candidate = match new_node {
+				match new_node {
 					Leaf(mut n) => n.insert_value(key.clone(), value),
 					Branch(_) => fail!("Did not create a leaf page"),
 				};
-				let mut next_free = None;
-				for i in range(0, self.entries.len()) {
-					if self.entries[i].page_id == 0 {
-						next_free = Some(i);
-						break;
-					}
-				}
-				let index = match next_free {
-					Some(index) => index,
-					None => fail!("Didn't find a free place to insert"),
-				};
-				println!("Adding new leaf node at {}", index);
-				self.entries[index].page_id = lazy_node.page_id;
-				self.entries[index].key = key;
-				return split_candidate
+				self.insert_branch(tree, key, lazy_node.page_id)
 			},
+			/* a place to insert it was found */
 			Some(index) => {
 				let lazy_node = LazyNode::new(self.entries[index].page_id);
 				let new_node = lazy_node.load(tree.manager.clone());
@@ -416,12 +441,13 @@ fn simple_insert() {
 }
 
 #[test]
-fn split_insert() {
+fn split_leaf_insert() {
 	let p = Path::new(".");
 	let manager = buffer::BufferManager::new(1024, p.clone());
 	let mut bt = BTree::new(23, Rc::new(Mutex::new(manager)));
 	let some_tid = schema::TID::new(23, 42);
-	for i in range(1, 3) {
+	bt.insert(301, some_tid);
+	for i in range(1, 5) {
 		bt.insert(i, some_tid);
 		let res = match bt.lookup(&i) {
 			Some(v) => v,
