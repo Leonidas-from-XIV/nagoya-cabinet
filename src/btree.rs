@@ -296,7 +296,7 @@ impl<'a, K: Keyish> LeafNode<'a, K> {
 
 	fn shift_to(&mut self, index: uint) {
 		let last_elem = self.entries.len() - 1;
-		for i in range(index, last_elem - 1) {
+		for i in range(index, last_elem) {
 			self.entries.swap(i, i+1);
 		}
 	}
