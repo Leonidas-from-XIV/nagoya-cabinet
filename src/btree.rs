@@ -248,6 +248,7 @@ impl<'a, K: Keyish> LeafNode<'a, K> {
 
 	fn lookup(self, key: &K) -> Option<schema::TID> {
 		for i in range(0, self.entries.len()) {
+			println!("Checking {:?} for {:?}", self.entries[i], key);
 			if &self.entries[i].key == key {
 				return Some(self.entries[i].tid)
 			}
@@ -371,7 +372,7 @@ impl<'a, K: Keyish> BranchNode<'a, K> {
 				continue
 			}
 			println!("Entry {}: {:?}", i, self.entries[i]);
-			if &self.entries[i].key <= key {
+			if key <= &self.entries[i].key {
 				// found the branch into which to descend
 				next_page = Some(self.entries[i].page_id);
 				break;
