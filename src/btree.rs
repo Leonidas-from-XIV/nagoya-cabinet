@@ -227,8 +227,17 @@ impl<'a, K: Keyish> LeafNode<'a, K> {
 				self.erase(&k);
 			}
 
+			// now let's actually insert that value
+			if key <= maximum {
+				// insert into new
+				new_leaf.insert_value(tree, key, tid);
+			} else {
+				// insert into this
+				self.insert_value(tree, key, tid);
+			}
+			// no worries, those can't overflow
+
 			let overflow = Overflowed(maximum, lazy_node.page_id);
-			println!("Overflow: {:?}", overflow);
 			return Some(overflow);
 		}
 
@@ -303,7 +312,7 @@ impl<'a, K: Keyish> LeafNode<'a, K> {
 
 	fn lookup(self, key: &K) -> Option<schema::TID> {
 		for i in range(0, self.entries.len()) {
-			println!("Checking {:?} for {:?}", self.entries[i], key);
+			//println!("Checking {:?} for {:?}", self.entries[i], key);
 			if &self.entries[i].key == key {
 				return Some(self.entries[i].tid)
 			}
@@ -452,7 +461,6 @@ impl<'a, K: Keyish> BranchNode<'a, K> {
 					Leaf(mut n) => n.insert_value(tree, key, value),
 					Branch(mut n) => n.insert_value(tree, key, value),
 				};
-				println!("Overflowed: {:?}", overflowed);
 				match overflowed {
 					None => None,
 					Some(Overflowed(max, page)) => self.insert_branch(tree, max, page),
