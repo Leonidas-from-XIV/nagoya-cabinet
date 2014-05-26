@@ -530,11 +530,20 @@ fn simple_insert() {
 
 #[test]
 fn split_leaf_insert() {
+	split_insert(true);
+}
+
+fn split_insert(leaf: bool) {
 	let p = Path::new(".");
 	let manager = buffer::BufferManager::new(1024, p.clone());
 	let mut bt = BTree::new(23, Rc::new(Mutex::new(manager)));
 	let some_tid = schema::TID::new(23, 42);
-	bt.insert(301, some_tid);
+
+	// this causes it to fill the leaf first
+	if leaf {
+		bt.insert(301, some_tid);
+	}
+
 	for i in range(1, 260) {
 		bt.insert(i, some_tid);
 		let res = match bt.lookup(&i) {
@@ -544,6 +553,11 @@ fn split_leaf_insert() {
 		assert_eq!(some_tid, res);
 	}
 	assert!(false);
+}
+
+#[test]
+fn split_branch_insert() {
+	split_insert(false);
 }
 
 #[test]
