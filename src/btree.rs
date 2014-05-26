@@ -395,7 +395,7 @@ impl<'a, K: Keyish> BranchNode<'a, K> {
 			// erase them second
 			for i in range(0, num_elements_to_move).rev() {
 				let k = self.entries[i].key.clone();
-				self.erase(&k);
+				self.erase_branch(&k);
 			}
 
 			// now let's actually insert that value
@@ -423,7 +423,7 @@ impl<'a, K: Keyish> BranchNode<'a, K> {
 		None
 	}
 
-	fn erase(&mut self, key: &K) {
+	fn erase_branch(&mut self, key: &K) {
 		for i in range(0, self.entries.len()) {
 			if &self.entries[i].key == key {
 				self.entries[i].key = Zero::zero();
