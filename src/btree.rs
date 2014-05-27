@@ -110,7 +110,12 @@ impl<'a, K: Keyish> BTree<'a, K> {
 
 	}
 
-	fn erase(&mut self, key: K) {
+	fn erase(&mut self, key: &K) {
+		let node = self.root.load(self.manager.clone());
+		match node {
+			Branch(mut n) => n.erase(self.manager.clone(), key),
+			Leaf(mut n) => n.erase(key),
+		}
 	}
 
 	fn lookup(&self, key: &K) -> Option<schema::TID> {
@@ -461,6 +466,30 @@ impl<'a, K: Keyish> BranchNode<'a, K> {
 		}
 	}
 
+	fn erase(&mut self, manager: ConcurrentManager, key: &K) {
+		let mut found = None;
+		for i in range(0, self.entries.len()) {
+			if self.entries[i].key.is_zero() {
+				continue;
+			}
+			if key <= &self.entries[i].key {
+				found = Some(i);
+				break;
+			}
+		}
+
+		match found {
+			None => (),
+			Some(index) => {
+				let lazy_node = LazyNode::new(self.entries[index].page_id);
+				match lazy_node.load(manager.clone()) {
+					Branch(mut n) => n.erase(manager.clone(), key),
+					Leaf(mut n) => n.erase(key),
+				};
+			},
+		}
+	}
+
 	// duplicated from LeafNode
 	fn shift_to(&mut self, index: uint) {
 		let last_elem = self.entries.len() - 1;
@@ -649,12 +678,14 @@ fn lookup_nonexisting() {
 }
 
 #[test]
-fn create_leaf_page() {
+fn simple_erase() {
 	let p = Path::new(".");
-	let mut manager = buffer::BufferManager::new(1024, p.clone());
-	let pagelock = manager.fix_page(10).unwrap();
-	let page = pagelock.read();
-	//let lp: LeafNode<u64> = LeafNode::new(page.get_data(), Rc::new(Mutex::new(manager)), pagelock);
-	//println!("lp len: {}", lp.entries.len());
-	assert!(false);
+	let manager = buffer::BufferManager::new(1024, p.clone());
+	let mut bt = BTree::new(23, Rc::new(Mutex::new(manager)));
+	let some_tid = schema::TID::new(23, 42);
+	let some_key = 42;
+	bt.insert(some_key, some_tid);
+	bt.erase(&some_key);
+	let result = bt.lookup(&42);
+	assert_eq!(result, None);
 }
