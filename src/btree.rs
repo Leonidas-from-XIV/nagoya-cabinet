@@ -67,7 +67,7 @@ impl<'a, K: Keyish> BTree<'a, K> {
 				}
 				println!("new_k {:?}, old_k {:?}", new_k, old_k);
 				let new_lazy_root = self.create_branch_page();
-				let mut new_lazy_root_node = match self.tree.load(self.manager.clone()) {
+				let mut new_lazy_root_node = match new_lazy_root.load(self.manager.clone()) {
 					Branch(b) => b,
 					Leaf(_) => fail!("Got lead where branch was expected"),
 				};
