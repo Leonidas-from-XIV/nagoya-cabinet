@@ -48,28 +48,22 @@ environment variables to specify some parameters if you like. Or don't, some
 defaults are provided.
 
 ```sh
-cd buffer
-rustc --test buffer.rs
-env THREADS=a PAGES_ON_DISK=b PAGES_IN_RAM=c ./buffer
+cd src
+rustc --test cabinet.rs
+env THREADS=a PAGES_ON_DISK=b PAGES_IN_RAM=c ./cabinet
 ```
-
-Build schema
-------------
-
-```sh
-cd schema
-rustc --test schema.rs
-./schema
-```
-
-To get more information output, the `RUST_LOG` variable can be used as above.
-
 
 Build cabinet
 -------------
+
+This will build the complete test suite.
 
 ```sh
 cd src
 rustc --test cabinet.rs
 ./cabinet
 ```
+
+Individual tests can be specified via ``module::test_name``, e.g.
+``btree::simple_insert``. To get more information output, the `RUST_LOG`
+variable can be used as above.
