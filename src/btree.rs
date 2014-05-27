@@ -49,7 +49,33 @@ impl<'a, K: Keyish> BTree<'a, K> {
 		};
 		// set new tree root if it was split
 		match candidate {
-			Some(new_node) => fail!("TODO: root split"),
+			Some(Overflowed(new_k, new_page_id)) => {
+				let old_page_id = self.tree.page_id;
+				// determine old_k
+				let old_node: BranchNode<K> = match self.tree.load(self.manager.clone()) {
+					Branch(b) => b,
+					Leaf(_) => fail!("Got leaf where branch was expected"),
+				};
+				let mut old_k: K = Zero::zero();
+				for i in range(0, old_node.entries.len()) {
+					if old_node.entries[i].page_id == 0 {
+						continue;
+					}
+					if old_node.entries[i].key > old_k {
+						old_k = old_node.entries[i].key.clone();
+					}
+				}
+				println!("new_k {:?}, old_k {:?}", new_k, old_k);
+				let new_lazy_root = self.create_branch_page();
+				let mut new_lazy_root_node = match self.tree.load(self.manager.clone()) {
+					Branch(b) => b,
+					Leaf(_) => fail!("Got lead where branch was expected"),
+				};
+
+				new_lazy_root_node.insert_branch(self, new_k, new_page_id);
+				new_lazy_root_node.insert_branch(self, old_k, old_page_id);
+				self.tree = new_lazy_root;
+			},
 			None => (),
 		}
 	}
@@ -530,13 +556,13 @@ impl<'a, K: Keyish> BranchNode<'a, K> {
 			if self.entries[i].key.is_zero() && self.entries[i].page_id == 0 {
 				continue
 			}
+			println!("Entry {}: {:?}", i, self.entries[i]);
 			if i == 0 {
 				if key <= &self.entries[i].key {
 					next_page = Some(self.entries[i].page_id);
 				}
 				continue;
 			}
-			println!("Entry {}: {:?}", i, self.entries[i]);
 			if &self.entries[i-1].key < key && key <= &self.entries[i].key {
 				// found the branch into which to descend
 				next_page = Some(self.entries[i].page_id);
