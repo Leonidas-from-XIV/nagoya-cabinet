@@ -66,7 +66,7 @@ impl<'a, K: Keyish> BTree<'a, K> {
 						old_k = old_node.entries[i].key.clone();
 					}
 				}
-				println!("new_k {:?}, old_k {:?}", new_k, old_k);
+				debug!("new_k {:?}, old_k {:?}", new_k, old_k);
 				let new_lazy_root = self.create_branch_node();
 				let mut new_lazy_root_node = match new_lazy_root.load(self.manager.clone()) {
 					Branch(b) => b,
@@ -226,7 +226,7 @@ impl<'a, K: Keyish> LeafNode<'a, K> {
 			}
 		}
 
-		println!("Instantiating leaf node with capacity {}", capacity);
+		info!("Instantiating leaf node with capacity {}", capacity);
 		LeafNode {
 			entries: r,
 			capacity: capacity,
@@ -236,7 +236,7 @@ impl<'a, K: Keyish> LeafNode<'a, K> {
 	}
 
 	fn insert_value(&mut self, tree: &mut BTree<K>, key: K, tid: schema::TID) -> Option<Overflowed<K>> {
-		println!("Leaf insertion, remaining capacity {}", self.capacity);
+		info!("Leaf insertion, remaining capacity {}", self.capacity);
 		if self.capacity == 0 {
 			let lazy_node = tree.create_leaf_node();
 			let new_node: Node<K> = lazy_node.load(self.manager.clone());
@@ -275,7 +275,7 @@ impl<'a, K: Keyish> LeafNode<'a, K> {
 
 		// find place to insert
 		let location = self.find_slot(&key);
-		println!("Location found: {}", location);
+		info!("Location found: {}", location);
 		// free that spot
 		self.shift_from(location);
 		// and put it in
@@ -357,7 +357,6 @@ impl<'a, K: Keyish> LeafNode<'a, K> {
 impl<'a, K> Drop for LeafNode<'a, K> {
 	fn drop(&mut self) {
 		let mut manager = self.manager.lock();
-		//println!("Writing back leaf page {:?}", self.frame);
 		// TODO: figure out if page was modified since loading
 		manager.unfix_page(self.frame.clone(), true);
 	}
@@ -398,7 +397,7 @@ impl<'a, K: Keyish> BranchNode<'a, K> {
 			}
 		}
 
-		println!("BranchNode computed capacity: {}", capacity);
+		info!("BranchNode computed capacity: {}", capacity);
 
 		BranchNode {
 			entries: r,
@@ -441,12 +440,11 @@ impl<'a, K: Keyish> BranchNode<'a, K> {
 			// no worries, those can't overflow
 
 			let overflow = Overflowed(maximum, lazy_node.page_id);
-			println!("Overflow {:?}", overflow);
-			//fail!("splitting branches TODO");
+			debug!("Overflow {:?}", overflow);
 			return Some(overflow);
 		}
 		let index = self.find_slot(&key);
-		println!("Adding new page reference at {}", index);
+		debug!("Adding new page reference at {}", index);
 		self.shift_from(index);
 
 		self.entries[index].page_id = value;
@@ -544,7 +542,7 @@ impl<'a, K: Keyish> BranchNode<'a, K> {
 				continue
 			}
 			if key <= self.entries[i].key {
-				println!("Found candidate, {:?} <= {:?}", key, self.entries[i].key);
+				debug!("Found candidate, {:?} <= {:?}", key, self.entries[i].key);
 				place = Some(i);
 				break;
 			}
@@ -586,7 +584,7 @@ impl<'a, K: Keyish> BranchNode<'a, K> {
 			if self.entries[i].key.is_zero() && self.entries[i].page_id == 0 {
 				continue
 			}
-			println!("Entry {}: {:?}", i, self.entries[i]);
+			debug!("Entry {}: {:?}", i, self.entries[i]);
 			if i == 0 {
 				if key <= &self.entries[i].key {
 					next_page = Some(self.entries[i].page_id);
@@ -599,7 +597,7 @@ impl<'a, K: Keyish> BranchNode<'a, K> {
 				break;
 			}
 		}
-		println!("Going for {:?}", next_page);
+		info!("Going for {:?}", next_page);
 
 		match next_page {
 			// if there is no page to descend to, it can't be found
@@ -620,7 +618,6 @@ impl<'a, K: Keyish> BranchNode<'a, K> {
 impl<'a, K> Drop for BranchNode<'a, K> {
 	fn drop(&mut self) {
 		let mut manager = self.manager.lock();
-		//println!("Ohai, unfixing page");
 		// TODO: figure out if page was modified since loading
 		manager.unfix_page(self.frame.clone(), true);
 	}
