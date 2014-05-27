@@ -21,7 +21,7 @@ impl<T: TotalOrd + Zero + Clone> Keyish for T {}
 struct BTree<'a, K> {
 	segment: u64,
 	manager: ConcurrentManager,
-	tree: LazyNode,
+	root: LazyNode,
 	next_free_page: u64,
 }
 
@@ -32,7 +32,7 @@ impl<'a, K: Keyish> BTree<'a, K> {
 		BTree {
 			segment: segment_id,
 			manager: manager,
-			tree: LazyNode::new(tree_base),
+			root: LazyNode::new(tree_base),
 			next_free_page: 2,
 		}
 	}
@@ -41,7 +41,7 @@ impl<'a, K: Keyish> BTree<'a, K> {
 		// it is not allowed for the key to be the Zero value, that is used
 		// as marker for invalid data
 		assert!(!key.is_zero());
-		let node = self.tree.load(self.manager.clone());
+		let node = self.root.load(self.manager.clone());
 		// try insertion and see if the root was split
 		let candidate = match node {
 			Branch(mut n) => n.insert_value(self, key, value),
@@ -50,9 +50,9 @@ impl<'a, K: Keyish> BTree<'a, K> {
 		// set new tree root if it was split
 		match candidate {
 			Some(Overflowed(new_k, new_page_id)) => {
-				let old_page_id = self.tree.page_id;
+				let old_page_id = self.root.page_id;
 				// determine old_k
-				let old_node: BranchNode<K> = match self.tree.load(self.manager.clone()) {
+				let old_node: BranchNode<K> = match self.root.load(self.manager.clone()) {
 					Branch(b) => b,
 					Leaf(_) => fail!("Got leaf where branch was expected"),
 				};
@@ -66,7 +66,7 @@ impl<'a, K: Keyish> BTree<'a, K> {
 					}
 				}
 				println!("new_k {:?}, old_k {:?}", new_k, old_k);
-				let new_lazy_root = self.create_branch_page();
+				let new_lazy_root = self.create_branch_node();
 				let mut new_lazy_root_node = match new_lazy_root.load(self.manager.clone()) {
 					Branch(b) => b,
 					Leaf(_) => fail!("Got lead where branch was expected"),
@@ -74,7 +74,7 @@ impl<'a, K: Keyish> BTree<'a, K> {
 
 				new_lazy_root_node.insert_branch(self, new_k, new_page_id);
 				new_lazy_root_node.insert_branch(self, old_k, old_page_id);
-				self.tree = new_lazy_root;
+				self.root = new_lazy_root;
 			},
 			None => (),
 		}
@@ -86,7 +86,7 @@ impl<'a, K: Keyish> BTree<'a, K> {
 		n
 	}
 
-	fn create_branch_page(&mut self) -> LazyNode {
+	fn create_branch_node(&mut self) -> LazyNode {
 		let next = self.next_page();
 		let page_path = buffer::join_segment(self.segment, next);
 		let mut manager = self.manager.lock();
@@ -97,7 +97,7 @@ impl<'a, K: Keyish> BTree<'a, K> {
 		LazyNode::new(page_path)
 	}
 
-	fn create_leaf_page(&mut self) -> LazyNode {
+	fn create_leaf_node(&mut self) -> LazyNode {
 		let next = self.next_page();
 		let page_path = buffer::join_segment(self.segment, next);
 		let mut manager = self.manager.lock();
@@ -114,7 +114,7 @@ impl<'a, K: Keyish> BTree<'a, K> {
 	}
 
 	fn lookup(&self, key: &K) -> Option<schema::TID> {
-		let node = self.tree.load(self.manager.clone());
+		let node = self.root.load(self.manager.clone());
 		match node {
 			Branch(n) => n.lookup(self.manager.clone(), key),
 			Leaf(n) => n.lookup(key),
@@ -232,7 +232,7 @@ impl<'a, K: Keyish> LeafNode<'a, K> {
 	fn insert_value(&mut self, tree: &mut BTree<K>, key: K, tid: schema::TID) -> Option<Overflowed<K>> {
 		println!("Leaf insertion, remaining capacity {}", self.capacity);
 		if self.capacity == 0 {
-			let lazy_node = tree.create_leaf_page();
+			let lazy_node = tree.create_leaf_node();
 			let new_node: Node<K> = lazy_node.load(self.manager.clone());
 			let mut new_leaf = match new_node {
 				Leaf(n) => n,
@@ -404,7 +404,7 @@ impl<'a, K: Keyish> BranchNode<'a, K> {
 
 	fn insert_branch(&mut self, tree: &mut BTree<K>, key: K, value: u64) -> Option<Overflowed<K>> {
 		if self.capacity == 0 {
-			let lazy_node = tree.create_branch_page();
+			let lazy_node = tree.create_branch_node();
 			let new_node = lazy_node.load(self.manager.clone());
 			let mut new_branch = match new_node {
 				Branch(b) => b,
@@ -524,7 +524,7 @@ impl<'a, K: Keyish> BranchNode<'a, K> {
 			/* no already existing place to insert exists */
 			None => {
 				// there is no such page, but it should be created
-				let lazy_node = tree.create_leaf_page();
+				let lazy_node = tree.create_leaf_node();
 				let new_node = lazy_node.load(tree.manager.clone());
 				match new_node {
 					Leaf(mut n) => n.insert_value(tree, key.clone(), value),
