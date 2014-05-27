@@ -2,6 +2,7 @@ use std::cast;
 use std::mem::size_of;
 use std::raw::Slice;
 use std::num::Zero;
+use std::io::TempDir;
 use std::rc::Rc;
 use sync::Mutex;
 
@@ -627,7 +628,14 @@ impl<'a, K> Drop for BranchNode<'a, K> {
 
 #[test]
 fn simple_insert() {
-	let p = Path::new(".");
+	let dir = match TempDir::new("btree") {
+		Some(temp_dir) => temp_dir,
+		None => fail!("creation of temporary directory"),
+	};
+
+	let p = dir.path();
+	//let p = Path::new(".");
+
 	let manager = buffer::BufferManager::new(1024, p.clone());
 	let mut bt = BTree::new(23, Rc::new(Mutex::new(manager)));
 	let some_tid = schema::TID::new(0, 0);
@@ -642,7 +650,14 @@ fn split_leaf_insert() {
 }
 
 fn split_insert(leaf: bool) {
-	let p = Path::new(".");
+	let dir = match TempDir::new("btree") {
+		Some(temp_dir) => temp_dir,
+		None => fail!("creation of temporary directory"),
+	};
+
+	let p = dir.path();
+	//let p = Path::new(".");
+
 	let manager = buffer::BufferManager::new(1024, p.clone());
 	let mut bt = BTree::new(23, Rc::new(Mutex::new(manager)));
 	let some_tid = schema::TID::new(23, 42);
@@ -660,7 +675,6 @@ fn split_insert(leaf: bool) {
 		};
 		assert_eq!(some_tid, res);
 	}
-	assert!(false);
 }
 
 #[test]
@@ -670,7 +684,14 @@ fn split_branch_insert() {
 
 #[test]
 fn lookup_nonexisting() {
-	let p = Path::new(".");
+	let dir = match TempDir::new("btree") {
+		Some(temp_dir) => temp_dir,
+		None => fail!("creation of temporary directory"),
+	};
+
+	let p = dir.path();
+	//let p = Path::new(".");
+
 	let manager = buffer::BufferManager::new(1024, p.clone());
 	let bt = BTree::new(23, Rc::new(Mutex::new(manager)));
 	let result = bt.lookup(&42);
@@ -679,7 +700,14 @@ fn lookup_nonexisting() {
 
 #[test]
 fn simple_erase() {
-	let p = Path::new(".");
+	let dir = match TempDir::new("btree") {
+		Some(temp_dir) => temp_dir,
+		None => fail!("creation of temporary directory"),
+	};
+
+	let p = dir.path();
+	//let p = Path::new(".");
+
 	let manager = buffer::BufferManager::new(1024, p.clone());
 	let mut bt = BTree::new(23, Rc::new(Mutex::new(manager)));
 	let some_tid = schema::TID::new(23, 42);

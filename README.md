@@ -63,3 +63,13 @@ rustc --test schema.rs
 ```
 
 To get more information output, the `RUST_LOG` variable can be used as above.
+
+
+Build cabinet
+-------------
+
+```sh
+cd src
+rustc --test cabinet.rs
+./cabinet
+```
