@@ -9,14 +9,14 @@ use serialize::{Encodable, Decodable};
 mod buffer;
 
 #[deriving(Encodable, Decodable)]
-enum SqlType {
+pub enum SqlType {
 	Char(uint),
 	Varchar(uint),
 	Integer,
 }
 
 #[deriving(Encodable, Decodable)]
-enum SqlAttribute {
+pub enum SqlAttribute {
 	Null,
 	NotNull,
 }
@@ -45,7 +45,7 @@ enum UpdateResult {
 }
 
 #[deriving(Encodable, Decodable)]
-struct Column {
+pub struct Column {
 	name: ~str,
 	datatype: SqlType,
 	attributes: Vec<SqlAttribute>,
