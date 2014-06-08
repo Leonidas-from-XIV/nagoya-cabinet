@@ -8,6 +8,7 @@ extern crate serialize;
 mod buffer;
 mod schema;
 mod btree;
+mod operators;
 
 #[cfg(not(test))]
 fn main() {

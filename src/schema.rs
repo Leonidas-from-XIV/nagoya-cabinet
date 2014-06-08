@@ -52,7 +52,7 @@ struct Column {
 }
 
 #[deriving(Encodable, Decodable)]
-struct Relation {
+pub struct Relation {
 	name: ~str,
 	columns: Vec<Column>,
 }
