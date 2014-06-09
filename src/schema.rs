@@ -49,11 +49,25 @@ pub struct Column {
 	name: ~str,
 	datatype: SqlType,
 	attributes: Vec<SqlAttribute>,
+	tids: Vec<TID>,
 }
 
 impl Column {
+	pub fn new(name: ~str, datatype: SqlType, attributes: Vec<SqlAttribute>) -> Column {
+		Column {
+			name: name,
+			datatype: datatype,
+			attributes: attributes,
+			tids: Vec::new(),
+		}
+	}
+
 	pub fn insert(&mut self, seg: &mut SPSegment, value: Record) -> Option<TID> {
 		seg.insert(&value)
+	}
+
+	pub fn get(&self, seg: &mut SPSegment, index: uint) -> Record {
+		seg.lookup(*self.tids.get(index))
 	}
 }
 
@@ -83,7 +97,15 @@ impl Relation {
 			self.columns.get_mut(i).insert(seg, r);
 			i += 1;
 		}
-		self.entries += i as u64;
+		self.entries += 1;
+	}
+
+	pub fn get(&self, seg: &mut SPSegment, index: uint) -> Vec<Record> {
+		let mut res = Vec::with_capacity(self.columns.len());
+		for i in range(0, self.columns.len()) {
+			res.push(self.columns.get(i).get(seg, index));
+		}
+		res
 	}
 }
 
@@ -535,7 +557,7 @@ impl SlottedPage {
 	}
 }
 
-#[deriving(Eq)]
+#[deriving(Eq, Encodable, Decodable)]
 pub struct TID(u64);
 
 impl Show for TID {
@@ -664,8 +686,8 @@ fn create_schema() {
 	let p = dir.path();
 	//let p = Path::new(".");
 
-	let name = Column {name: ~"name", datatype: Varchar(128), attributes: vec!(NotNull)};
-	let age = Column {name: ~"age", datatype: Integer, attributes: vec!(NotNull)};
+	let name = Column::new(~"name", Varchar(128), vec!(NotNull));
+	let age = Column::new(~"age", Integer, vec!(NotNull));
 	let mut relation = Relation::new(~"Person");
 	relation.add_column(name);
 	relation.add_column(age);
