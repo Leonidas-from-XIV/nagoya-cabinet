@@ -272,7 +272,7 @@ impl Schema {
 	}
 }
 
-#[deriving(Eq)]
+#[deriving(Eq, Hash)]
 pub struct Record {
 	data: Vec<u8>,
 }

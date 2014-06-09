@@ -1,9 +1,8 @@
-use std::hash::Hash;
 use std::io::TempDir;
 use schema;
 use buffer;
 
-#[deriving(Show)]
+#[deriving(Show, Eq, Hash)]
 struct Register {
 	record: schema::Record,
 }
@@ -33,7 +32,13 @@ impl Register {
 	}
 }
 
-// TODO: Iterator<T> + Ord + Hash
+impl Ord for Register {
+	fn lt(&self, other: &Register) -> bool {
+		// not the most robust implementation
+		self.get_int() < other.get_int()
+	}
+}
+
 trait Operatorish<T>: Iterator<T> {
 	//fn open();
 	//fn close(&self);
