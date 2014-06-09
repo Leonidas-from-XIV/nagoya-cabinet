@@ -1,6 +1,7 @@
 use std::hash::Hash;
 use std::io::TempDir;
 use schema;
+use buffer;
 
 struct Register<'a> {
 	record: &'a schema::Record,
@@ -66,16 +67,16 @@ fn simple_tablescan() {
 	//let p = dir.path();
 	let p = Path::new(".");
 
-	//let mut manager = schema::buffer::BufferManager::new(1024, p.clone());
-	//let mut seg = schema::SPSegment {id: 1, manager: &mut manager};
+	let mut manager = buffer::BufferManager::new(1024, p.clone());
+	let mut seg = schema::SPSegment {id: 1, manager: &mut manager};
 
 	let name = schema::Column {name: ~"name", datatype: schema::Varchar(128), attributes: vec!(schema::NotNull)};
 	let age = schema::Column {name: ~"age", datatype: schema::Integer, attributes: vec!(schema::NotNull)};
 	let mut relation = schema::Relation::new(~"Person");
 	relation.add_column(name);
 	relation.add_column(age);
-	//relation.insert(seg, vec!(schema::Record::from_str(~"Alice"), schema::Record::from_int(20)));
-	//relation.insert(seg, vec!(schema::Record::from_str(~"Bob"), schema::Record::from_int(40)));
+	relation.insert(&mut seg, vec!(schema::Record::from_str(~"Alice"), schema::Record::from_int(20)));
+	relation.insert(&mut seg, vec!(schema::Record::from_str(~"Bob"), schema::Record::from_int(40)));
 
 	let mut ts = TableScan::new(relation);
 	for tuple in ts {

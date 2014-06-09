@@ -52,8 +52,8 @@ pub struct Column {
 }
 
 impl Column {
-	pub fn insert(&mut self, value: Record) {
-		// TODO
+	pub fn insert(&mut self, seg: &mut SPSegment, value: Record) -> Option<TID> {
+		seg.insert(&value)
 	}
 }
 
@@ -61,24 +61,29 @@ impl Column {
 pub struct Relation {
 	name: ~str,
 	columns: Vec<Column>,
-	
+	entries: u64,
 }
 
 impl Relation {
 	pub fn new(name: ~str) -> Relation {
-		Relation {name: name, columns: Vec::new()}
+		Relation {
+			name: name,
+			columns: Vec::new(),
+			entries: 0
+		}
 	}
 
 	pub fn add_column(&mut self, column: Column) {
 		self.columns.push(column);
 	}
 
-	pub fn insert(&mut self, seg: SPSegment, row: Vec<Record>) {
+	pub fn insert(&mut self, seg: &mut SPSegment, row: Vec<Record>) {
 		let mut i = 0;
 		for r in row.move_iter() {
-			self.columns.get_mut(i).insert(r);
+			self.columns.get_mut(i).insert(seg, r);
 			i += 1;
 		}
+		self.entries += i as u64;
 	}
 }
 
