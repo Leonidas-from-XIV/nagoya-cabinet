@@ -51,10 +51,17 @@ pub struct Column {
 	attributes: Vec<SqlAttribute>,
 }
 
+impl Column {
+	pub fn insert(&mut self, value: Record) {
+		// TODO
+	}
+}
+
 #[deriving(Encodable, Decodable)]
 pub struct Relation {
 	name: ~str,
 	columns: Vec<Column>,
+	
 }
 
 impl Relation {
@@ -64,6 +71,14 @@ impl Relation {
 
 	pub fn add_column(&mut self, column: Column) {
 		self.columns.push(column);
+	}
+
+	pub fn insert(&mut self, seg: SPSegment, row: Vec<Record>) {
+		let mut i = 0;
+		for r in row.move_iter() {
+			self.columns.get_mut(i).insert(r);
+			i += 1;
+		}
 	}
 }
 
@@ -226,7 +241,7 @@ impl Schema {
 }
 
 #[deriving(Eq)]
-struct Record {
+pub struct Record {
 	data: Vec<u8>,
 }
 
@@ -242,6 +257,15 @@ impl Record {
 		Record {data: data}
 	}
 
+	pub fn from_str(data: ~str) -> Record {
+		Record {data: Vec::from_slice(data.as_bytes())}
+	}
+
+	pub fn from_int(data: int) -> Record {
+		// TODO
+		Record {data: vec!(0, 0, 0, 42)}
+	}
+
 	fn len(&self) -> uint {
 		self.data.len()
 	}
@@ -251,7 +275,7 @@ impl Record {
 	}
 }
 
-struct SPSegment<'a> {
+pub struct SPSegment<'a> {
 	id: u64,
 	manager: &'a mut buffer::BufferManager,
 }
