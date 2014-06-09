@@ -6,7 +6,7 @@ use std::fmt::{Formatter, Result, Show};
 use sync::{Arc, RWLock};
 use serialize::ebml::{reader,writer};
 use serialize::{Encodable, Decodable};
-mod buffer;
+use buffer;
 
 #[deriving(Encodable, Decodable)]
 pub enum SqlType {

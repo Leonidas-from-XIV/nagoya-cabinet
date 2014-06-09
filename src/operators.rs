@@ -1,6 +1,6 @@
 use std::hash::Hash;
 use std::io::TempDir;
-mod schema;
+use schema;
 
 struct Register<'a> {
 	record: &'a schema::Record,

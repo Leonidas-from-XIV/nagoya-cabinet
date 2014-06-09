@@ -6,8 +6,8 @@ use std::io::TempDir;
 use std::rc::Rc;
 use sync::Mutex;
 
-mod buffer;
-mod schema;
+use buffer;
+use schema;
 
 static LEAF_MARKER: u8 = 0b11111111;
 static BRANCH_MARKER: u8 = 0b0;
