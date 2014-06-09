@@ -3,22 +3,32 @@ use std::io::TempDir;
 use schema;
 use buffer;
 
-struct Register<'a> {
-	record: &'a schema::Record,
+#[deriving(Show)]
+struct Register {
+	record: schema::Record,
 }
 
-impl<'a> Register<'a> {
-	fn setInteger(val: int) {
+impl Register {
+	fn new(rec: schema::Record) -> Register {
+		Register {
+			record: rec,
+		}
 	}
 
-	fn getInteger() -> int {
-		0
+	fn set_int(&mut self, val: int) {
+		// TODO
 	}
 
-	fn setString() {
+	fn get_int(&self) -> int {
+		self.record.to_int()
 	}
 
-	fn getString() -> ~str {
+	fn set_str(&mut self) {
+		// TODO
+	}
+
+	fn get_str(&self) -> ~str {
+		// TODO
 		~"TODO"
 	}
 }
@@ -31,25 +41,35 @@ trait Operatorish<T>: Iterator<T> {
 
 struct TableScan<'a, 'b> {
 	relation: schema::Relation,
-	segment: &'a schema::SPSegment<'b>,
+	segment: &'a mut schema::SPSegment<'b>,
+	current: uint,
 }
 
 impl<'a, 'b> TableScan<'a, 'b> {
-	fn new(rel: schema::Relation, seg: &'a schema::SPSegment<'b>) -> TableScan<'a, 'b> {
+	fn new(rel: schema::Relation, seg: &'a mut schema::SPSegment<'b>) -> TableScan<'a, 'b> {
 		TableScan {
 			relation: rel,
 			segment: seg,
+			current: 0,
 		}
 	}
 }
 
-impl<'a, 'b, 'c> Operatorish<Vec<Register<'c>>> for TableScan<'a, 'b> {
+impl<'a, 'b> Operatorish<Vec<Register>> for TableScan<'a, 'b> {
 }
 
-impl<'a, 'b, 'c> Iterator<Vec<Register<'c>>> for TableScan<'a, 'b> {
-	fn next(&mut self) -> Option<Vec<Register<'c>>> {
-		//let tup = self.relation.get(0);
-		None
+impl<'a, 'b> Iterator<Vec<Register>> for TableScan<'a, 'b> {
+	fn next(&mut self) -> Option<Vec<Register>> {
+		if (self.current as u64) < self.relation.inserted {
+			let tup = self.relation.get(self.segment, self.current);
+			let mut res = tup.move_iter().map(|e| Register::new(e)).
+				collect::<Vec<Register>>();
+			println!("res: {}", res);
+			self.current += 1;
+			Some(res)
+		} else {
+			None
+		}
 	}
 }
 

@@ -1,5 +1,5 @@
 use std::cmp::min;
-use std::io::{IoResult, IoError, InvalidInput, SeekStyle, BufWriter, BufReader, TempDir};
+use std::io::{IoResult, IoError, InvalidInput, SeekStyle, BufWriter, BufReader, TempDir, MemWriter};
 use std::io::{SeekSet, SeekEnd, SeekCur};
 use std::mem::size_of;
 use std::fmt::{Formatter, Result, Show};
@@ -62,9 +62,13 @@ impl Column {
 		}
 	}
 
-	pub fn insert(&mut self, seg: &mut SPSegment, value: Record) -> Option<TID> {
-		seg.insert(&value)
+	pub fn insert(&mut self, seg: &mut SPSegment, value: Record) {
+		let inserted = seg.insert(&value);
+		let tid = inserted.unwrap_or_else(||
+			fail!("Inserting value into column failed!"));
+		self.tids.push(tid);
 	}
+
 
 	pub fn get(&self, seg: &mut SPSegment, index: uint) -> Record {
 		seg.lookup(*self.tids.get(index))
@@ -75,7 +79,8 @@ impl Column {
 pub struct Relation {
 	name: ~str,
 	columns: Vec<Column>,
-	entries: u64,
+	// stupid name, I know
+	inserted: u64,
 }
 
 impl Relation {
@@ -83,7 +88,7 @@ impl Relation {
 		Relation {
 			name: name,
 			columns: Vec::new(),
-			entries: 0
+			inserted: 0
 		}
 	}
 
@@ -97,7 +102,7 @@ impl Relation {
 			self.columns.get_mut(i).insert(seg, r);
 			i += 1;
 		}
-		self.entries += 1;
+		self.inserted += 1;
 	}
 
 	pub fn get(&self, seg: &mut SPSegment, index: uint) -> Vec<Record> {
@@ -289,8 +294,17 @@ impl Record {
 	}
 
 	pub fn from_int(data: int) -> Record {
-		// TODO
-		Record {data: vec!(0, 0, 0, 42)}
+		let mut mw = MemWriter::new();
+		mw.write_le_int(data);
+		Record {data: Vec::from_slice(mw.unwrap())}
+	}
+
+	pub fn to_int(&self) -> int {
+		let mut br = BufReader::new(self.data.as_slice());
+		match br.read_le_int() {
+			Ok(v) => v,
+			Err(e) => fail!("reading Record as int, {}", e),
+		}
 	}
 
 	fn len(&self) -> uint {
