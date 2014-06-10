@@ -78,14 +78,26 @@ impl<'a, 'b> Iterator<Vec<Register>> for TableScan<'a, 'b> {
 	}
 }
 
-/*
-impl Ord for TableScan {
-	fn lt(&self, other: &TableScan) -> bool {
-		// TODO
-		true
+struct Print<T, V> {
+	input: T,
+	output: V,
+}
+
+impl<T: Operatorish<Vec<Register>>, V: Writer> Print<T, V> {
+	fn new(input: T, output: V) -> Print<T, V> {
+		Print {
+			input: input,
+			output: output
+		}
 	}
 }
-*/
+
+impl<T: Operatorish<Vec<Register>>, V: Writer> Iterator<()> for Print<T, V> {
+	fn next(&mut self) -> Option<()> {
+		// TODO
+		None
+	}
+}
 
 #[test]
 fn simple_tablescan() {
@@ -110,7 +122,7 @@ fn simple_tablescan() {
 
 	let mut ts = TableScan::new(relation, &mut seg);
 	for tuple in ts {
-		println!("Got entry {:?}", tuple);
+		println!("Got entry {}", tuple);
 	}
 
 	assert!(false);
