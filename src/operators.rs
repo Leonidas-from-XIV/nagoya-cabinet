@@ -1,4 +1,4 @@
-use std::io::TempDir;
+use std::io::{TempDir, MemWriter};
 use schema;
 use buffer;
 
@@ -78,13 +78,13 @@ impl<'a, 'b> Iterator<Vec<Register>> for TableScan<'a, 'b> {
 	}
 }
 
-struct Print<T, V> {
+struct Print<'a, T, V> {
 	input: T,
-	output: V,
+	output: &'a mut V,
 }
 
-impl<T: Operatorish<Vec<Register>>, V: Writer> Print<T, V> {
-	fn new(input: T, output: V) -> Print<T, V> {
+impl<'a, T: Operatorish<Vec<Register>>, V: Writer> Print<'a, T, V> {
+	fn new(input: T, output: &'a mut V) -> Print<'a, T, V> {
 		Print {
 			input: input,
 			output: output
@@ -92,10 +92,17 @@ impl<T: Operatorish<Vec<Register>>, V: Writer> Print<T, V> {
 	}
 }
 
-impl<T: Operatorish<Vec<Register>>, V: Writer> Iterator<()> for Print<T, V> {
-	fn next(&mut self) -> Option<()> {
-		// TODO
-		None
+impl<'a, T: Operatorish<Vec<Register>>, V: Writer> Iterator<Vec<Register>> for Print<'a, T, V> {
+	fn next(&mut self) -> Option<Vec<Register>> {
+		let cur = self.input.next();
+		match cur {
+			Some(x) => {
+				// TODO: construct string from result
+				self.output.write("TODO\n".as_bytes());
+				Some(x)
+			},
+			None => None,
+		}
 	}
 }
 
@@ -120,10 +127,21 @@ fn simple_tablescan() {
 	relation.insert(&mut seg, vec!(schema::Record::from_str(~"Alice"), schema::Record::from_int(20)));
 	relation.insert(&mut seg, vec!(schema::Record::from_str(~"Bob"), schema::Record::from_int(40)));
 
-	let mut ts = TableScan::new(relation, &mut seg);
-	for tuple in ts {
-		println!("Got entry {}", tuple);
+	{
+		let mut ts = TableScan::new(relation.clone(), &mut seg);
+		for tuple in ts {
+			println!("Got entry {}", tuple);
+		}
 	}
+
+	let mut ts = TableScan::new(relation, &mut seg);
+	let mut mw = MemWriter::new();
+	{
+		let mut pr = Print::new(ts, &mut mw);
+		// force write by iterating, strange API
+		for _ in pr {}
+	}
+	println!("Saved: {}", mw.unwrap());
 
 	assert!(false);
 }

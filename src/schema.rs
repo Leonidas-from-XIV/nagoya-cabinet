@@ -8,14 +8,14 @@ use serialize::ebml::{reader,writer};
 use serialize::{Encodable, Decodable};
 use buffer;
 
-#[deriving(Encodable, Decodable)]
+#[deriving(Encodable, Decodable, Clone)]
 pub enum SqlType {
 	Char(uint),
 	Varchar(uint),
 	Integer,
 }
 
-#[deriving(Encodable, Decodable)]
+#[deriving(Encodable, Decodable, Clone)]
 pub enum SqlAttribute {
 	Null,
 	NotNull,
@@ -44,7 +44,7 @@ enum UpdateResult {
 	DeleteOld(TID),
 }
 
-#[deriving(Encodable, Decodable)]
+#[deriving(Encodable, Decodable, Clone)]
 pub struct Column {
 	name: ~str,
 	datatype: SqlType,
@@ -75,7 +75,7 @@ impl Column {
 	}
 }
 
-#[deriving(Encodable, Decodable)]
+#[deriving(Encodable, Decodable, Clone)]
 pub struct Relation {
 	name: ~str,
 	columns: Vec<Column>,
@@ -571,7 +571,7 @@ impl SlottedPage {
 	}
 }
 
-#[deriving(Eq, Encodable, Decodable)]
+#[deriving(Eq, Encodable, Decodable, Clone)]
 pub struct TID(u64);
 
 impl Show for TID {
