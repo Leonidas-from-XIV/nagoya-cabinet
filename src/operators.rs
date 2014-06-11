@@ -29,9 +29,9 @@ impl Register {
 		// TODO
 	}
 
-	fn get_str(&self) -> ~str {
-		// TODO
-		~"TODO"
+	fn get_str<'a>(&'a self) -> &'a str {
+		let d = self.record.get_data();
+		from_utf8(d).unwrap()
 	}
 }
 
