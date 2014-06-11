@@ -101,7 +101,6 @@ impl<'a, T: Operatorish<Vec<Register>>, V: Writer> Iterator<Vec<Register>> for P
 		match cur {
 			Some(reg) => {
 				for item in reg.iter() {
-					// TODO: construct string from result
 					match item.datatype {
 						schema::Varchar(_) => self.output.write(item.get_str().as_bytes()),
 						schema::Integer => self.output.write(
@@ -113,6 +112,20 @@ impl<'a, T: Operatorish<Vec<Register>>, V: Writer> Iterator<Vec<Register>> for P
 				Some(reg)
 			},
 			None => None,
+		}
+	}
+}
+
+struct Project<T> {
+	input: T,
+	registerids: Vec<uint>,
+}
+
+impl<T: Operatorish<Vec<Register>>> Project<T> {
+	fn new(input: T, regs: Vec<uint>) -> Project<T> {
+		Project {
+			input: input,
+			registerids: regs,
 		}
 	}
 }
