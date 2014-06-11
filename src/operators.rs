@@ -104,7 +104,8 @@ impl<'a, T: Operatorish<Vec<Register>>, V: Writer> Iterator<Vec<Register>> for P
 					// TODO: construct string from result
 					match item.datatype {
 						schema::Varchar(_) => self.output.write(item.get_str().as_bytes()),
-						schema::Integer => self.output.write("TODONUM".as_bytes())
+						schema::Integer => self.output.write(
+							format!("{}", item.get_int()).as_bytes())
 					};
 					self.output.write(", ".as_bytes());
 				}
