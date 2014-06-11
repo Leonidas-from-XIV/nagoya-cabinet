@@ -1,16 +1,19 @@
 use std::io::{TempDir, MemWriter};
+use std::str::from_utf8;
 use schema;
 use buffer;
 
 #[deriving(Show, Eq, Hash)]
 struct Register {
 	record: schema::Record,
+	datatype: schema::SqlType,
 }
 
 impl Register {
-	fn new(rec: schema::Record) -> Register {
+	fn new(rec: schema::Record, typ: schema::SqlType) -> Register {
 		Register {
 			record: rec,
+			datatype: typ,
 		}
 	}
 
@@ -67,7 +70,7 @@ impl<'a, 'b> Iterator<Vec<Register>> for TableScan<'a, 'b> {
 	fn next(&mut self) -> Option<Vec<Register>> {
 		if (self.current as u64) < self.relation.inserted {
 			let tup = self.relation.get(self.segment, self.current);
-			let mut res = tup.move_iter().map(|e| Register::new(e)).
+			let mut res = tup.move_iter().map(|(v, t)| Register::new(v, t)).
 				collect::<Vec<Register>>();
 			println!("res: {}", res);
 			self.current += 1;
@@ -96,10 +99,17 @@ impl<'a, T: Operatorish<Vec<Register>>, V: Writer> Iterator<Vec<Register>> for P
 	fn next(&mut self) -> Option<Vec<Register>> {
 		let cur = self.input.next();
 		match cur {
-			Some(x) => {
-				// TODO: construct string from result
-				self.output.write("TODO\n".as_bytes());
-				Some(x)
+			Some(reg) => {
+				for item in reg.iter() {
+					// TODO: construct string from result
+					match item.datatype {
+						schema::Varchar(_) => self.output.write(item.get_str().as_bytes()),
+						schema::Integer => self.output.write("TODONUM".as_bytes())
+					};
+					self.output.write(", ".as_bytes());
+				}
+				self.output.write("\n".as_bytes());
+				Some(reg)
 			},
 			None => None,
 		}
@@ -141,7 +151,7 @@ fn simple_tablescan() {
 		// force write by iterating, strange API
 		for _ in pr {}
 	}
-	println!("Saved: {}", mw.unwrap());
+	println!("Saved: {}", from_utf8(mw.unwrap()).unwrap());
 
 	assert!(false);
 }

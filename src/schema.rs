@@ -8,9 +8,9 @@ use serialize::ebml::{reader,writer};
 use serialize::{Encodable, Decodable};
 use buffer;
 
-#[deriving(Encodable, Decodable, Clone)]
+#[deriving(Encodable, Decodable, Clone, Eq, Hash, Show)]
 pub enum SqlType {
-	Char(uint),
+	/*Char(uint),*/
 	Varchar(uint),
 	Integer,
 }
@@ -105,10 +105,11 @@ impl Relation {
 		self.inserted += 1;
 	}
 
-	pub fn get(&self, seg: &mut SPSegment, index: uint) -> Vec<Record> {
+	pub fn get(&self, seg: &mut SPSegment, index: uint) -> Vec<(Record, SqlType)> {
 		let mut res = Vec::with_capacity(self.columns.len());
 		for i in range(0, self.columns.len()) {
-			res.push(self.columns.get(i).get(seg, index));
+			let t = self.columns.get(i).datatype;
+			res.push((self.columns.get(i).get(seg, index), t));
 		}
 		res
 	}
