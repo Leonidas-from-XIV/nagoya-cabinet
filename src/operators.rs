@@ -156,23 +156,61 @@ impl<T: Operatorish<Vec<Register>>> Iterator<Vec<Register>> for Project<T> {
 impl<T: Operatorish<Vec<Register>>> Operatorish<Vec<Register>> for Project<T> {
 }
 
+#[deriving(Show)]
 enum Selectable {
 	Varchar(~str),
-	Integer,
+	Integer(int),
 }
 
 struct Select<T> {
 	input: T,
-	selections: Vec<(uint, Selectable)>,
+	index: uint,
+	value: Selectable,
 }
 
 impl<T: Operatorish<Vec<Register>>> Select<T> {
-	fn new(input: T, select: Vec<(uint, Selectable)>) -> Select<T> {
+	fn new(input: T, index: uint, value: Selectable) -> Select<T> {
 		Select {
 			input: input,
-			selections: select,
+			index: index,
+			value: value,
 		}
 	}
+}
+
+impl<T: Operatorish<Vec<Register>>> Iterator<Vec<Register>> for Select<T> {
+	fn next(&mut self) -> Option<Vec<Register>> {
+		let cur = self.input.next();
+		match cur {
+			None => None,
+			Some(reg) => {
+				// TODO: fix up this, returning None terminates the
+				// iterator but should just skip this line
+				match self.value {
+					Varchar(ref v) => {
+						println!("Comparing {} with {}",
+							reg.get(self.index).get_str(),
+							v);
+						if reg.get(self.index).get_str() == *v {
+							Some(reg)
+						} else {
+							None
+						}
+					},
+					Integer(v) => {
+						if reg.get(self.index).get_int() == v {
+							Some(reg)
+						} else {
+							None
+						}
+					}
+				}
+			},
+		}
+	}
+}
+
+impl<T: Operatorish<Vec<Register>>> Operatorish<Vec<Register>> for Select<T> {
 }
 
 #[test]
@@ -220,6 +258,28 @@ fn simple_tablescan() {
 			let mut ts = TableScan::new(relation.clone(), &mut seg);
 			let mut pr = Project::new(ts, vec!(0));
 			let mut pr = Print::new(pr, &mut mw);
+			for _ in pr {}
+		}
+		println!("Saved: {}", from_utf8(mw.unwrap()).unwrap());
+	}
+
+	{
+		let mut mw = MemWriter::new();
+		{
+			let mut ts = TableScan::new(relation.clone(), &mut seg);
+			let mut se = Select::new(ts, 1, Integer(20));
+			let mut pr = Print::new(se, &mut mw);
+			for _ in pr {}
+		}
+		println!("Saved: {}", from_utf8(mw.unwrap()).unwrap());
+	}
+
+	{
+		let mut mw = MemWriter::new();
+		{
+			let mut ts = TableScan::new(relation.clone(), &mut seg);
+			let mut se = Select::new(ts, 0, Varchar(~"Bob"));
+			let mut pr = Print::new(se, &mut mw);
 			for _ in pr {}
 		}
 		println!("Saved: {}", from_utf8(mw.unwrap()).unwrap());
