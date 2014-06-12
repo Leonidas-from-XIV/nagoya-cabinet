@@ -180,35 +180,43 @@ impl<T: Operatorish<Vec<Register>>> Select<T> {
 
 impl<T: Operatorish<Vec<Register>>> Iterator<Vec<Register>> for Select<T> {
 	fn next(&mut self) -> Option<Vec<Register>> {
+		// initial value
 		let mut cur = self.input.next();
-		while cur != None {
-			match cur {
-				None => break,
-				Some(reg) => {
-					match self.value {
-						Varchar(ref v) => {
-							println!("Comparing {} with {}",
-								reg.get(self.index).get_str(),
-								v);
-							if reg.get(self.index).get_str() == *v {
-								return Some(reg)
-							} else {
-								cur = self.input.next();
-								continue
-							}
-						},
-						Integer(v) => {
-							if reg.get(self.index).get_int() == v {
-								return Some(reg)
-							} else {
-								cur = self.input.next();
-								continue
-							}
-						}
+		while cur.is_some() {
+			// we made sure cur is Some(…), so we can unwrap safely
+			let reg = cur.unwrap();
+
+			// check what we got to select for and retrieve values
+			// accordingly
+			match self.value {
+				// comparing to a string
+				Varchar(ref v) => {
+					println!("Comparing {} with {}",
+						reg.get(self.index).get_str(),
+						v);
+					// getting the register value as string
+					if reg.get(self.index).get_str() == *v {
+						return Some(reg)
+					} else {
+						// not equal, skip to next entry
+						cur = self.input.next();
+						continue
 					}
 				},
+				// comparing to a number
+				Integer(v) => {
+					// compare against reg as integer
+					if reg.get(self.index).get_int() == v {
+						return Some(reg)
+					} else {
+						// not equal, skip to next entry
+						cur = self.input.next();
+						continue
+					}
+				}
 			}
 		}
+		// no more entries, signal iterator exhaustion
 		None
 	}
 }
