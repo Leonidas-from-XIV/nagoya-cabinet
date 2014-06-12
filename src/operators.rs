@@ -129,6 +129,31 @@ impl<T: Operatorish<Vec<Register>>> Project<T> {
 		}
 	}
 }
+impl<T: Operatorish<Vec<Register>>> Iterator<Vec<Register>> for Project<T> {
+	fn next(&mut self) -> Option<Vec<Register>> {
+		let cur = self.input.next();
+		match cur {
+			None => None,
+			Some(mut reg) => {
+				let mut res = Vec::with_capacity(self.registerids.len());
+				let mut regids = self.registerids.clone();
+				regids.reverse();
+				for index in regids.move_iter() {
+					let value = reg.remove(index);
+					let v = match value {
+						None => fail!("Projection doesn't have vield {}", index),
+						Some(v) => v,
+					};
+					res.push(v);
+				}
+				Some(res)
+			}
+		}
+	}
+}
+
+impl<T: Operatorish<Vec<Register>>> Operatorish<Vec<Register>> for Project<T> {
+}
 
 #[test]
 fn simple_tablescan() {
@@ -158,14 +183,27 @@ fn simple_tablescan() {
 		}
 	}
 
-	let mut ts = TableScan::new(relation, &mut seg);
-	let mut mw = MemWriter::new();
 	{
-		let mut pr = Print::new(ts, &mut mw);
-		// force write by iterating, strange API
-		for _ in pr {}
+		let mut mw = MemWriter::new();
+		{
+			let mut ts = TableScan::new(relation.clone(), &mut seg);
+			let mut pr = Print::new(ts, &mut mw);
+			// force write by iterating, strange API
+			for _ in pr {}
+		}
+		println!("Saved: {}", from_utf8(mw.unwrap()).unwrap());
 	}
-	println!("Saved: {}", from_utf8(mw.unwrap()).unwrap());
+
+	{
+		let mut mw = MemWriter::new();
+		{
+			let mut ts = TableScan::new(relation.clone(), &mut seg);
+			let mut pr = Project::new(ts, vec!(0));
+			let mut pr = Print::new(pr, &mut mw);
+			for _ in pr {}
+		}
+		println!("Saved: {}", from_utf8(mw.unwrap()).unwrap());
+	}
 
 	assert!(false);
 }
