@@ -129,6 +129,7 @@ impl<T: Operatorish<Vec<Register>>> Project<T> {
 		}
 	}
 }
+
 impl<T: Operatorish<Vec<Register>>> Iterator<Vec<Register>> for Project<T> {
 	fn next(&mut self) -> Option<Vec<Register>> {
 		let cur = self.input.next();
@@ -153,6 +154,25 @@ impl<T: Operatorish<Vec<Register>>> Iterator<Vec<Register>> for Project<T> {
 }
 
 impl<T: Operatorish<Vec<Register>>> Operatorish<Vec<Register>> for Project<T> {
+}
+
+enum Selectable {
+	Varchar(~str),
+	Integer,
+}
+
+struct Select<T> {
+	input: T,
+	selections: Vec<(uint, Selectable)>,
+}
+
+impl<T: Operatorish<Vec<Register>>> Select<T> {
+	fn new(input: T, select: Vec<(uint, Selectable)>) -> Select<T> {
+		Select {
+			input: input,
+			selections: select,
+		}
+	}
 }
 
 #[test]
