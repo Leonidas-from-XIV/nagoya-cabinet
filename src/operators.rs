@@ -72,7 +72,7 @@ impl<'a, 'b> Iterator<Vec<Register>> for TableScan<'a, 'b> {
 			let tup = self.relation.get(self.segment, self.current);
 			let mut res = tup.move_iter().map(|(v, t)| Register::new(v, t)).
 				collect::<Vec<Register>>();
-			println!("res: {}", res);
+			debug!("TS: {}", res);
 			self.current += 1;
 			Some(res)
 		} else {
@@ -180,33 +180,36 @@ impl<T: Operatorish<Vec<Register>>> Select<T> {
 
 impl<T: Operatorish<Vec<Register>>> Iterator<Vec<Register>> for Select<T> {
 	fn next(&mut self) -> Option<Vec<Register>> {
-		let cur = self.input.next();
-		match cur {
-			None => None,
-			Some(reg) => {
-				// TODO: fix up this, returning None terminates the
-				// iterator but should just skip this line
-				match self.value {
-					Varchar(ref v) => {
-						println!("Comparing {} with {}",
-							reg.get(self.index).get_str(),
-							v);
-						if reg.get(self.index).get_str() == *v {
-							Some(reg)
-						} else {
-							None
-						}
-					},
-					Integer(v) => {
-						if reg.get(self.index).get_int() == v {
-							Some(reg)
-						} else {
-							None
+		let mut cur = self.input.next();
+		while cur != None {
+			match cur {
+				None => break,
+				Some(reg) => {
+					match self.value {
+						Varchar(ref v) => {
+							println!("Comparing {} with {}",
+								reg.get(self.index).get_str(),
+								v);
+							if reg.get(self.index).get_str() == *v {
+								return Some(reg)
+							} else {
+								cur = self.input.next();
+								continue
+							}
+						},
+						Integer(v) => {
+							if reg.get(self.index).get_int() == v {
+								return Some(reg)
+							} else {
+								cur = self.input.next();
+								continue
+							}
 						}
 					}
-				}
-			},
+				},
+			}
 		}
+		None
 	}
 }
 
