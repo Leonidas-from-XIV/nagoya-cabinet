@@ -338,13 +338,24 @@ fn simple_hashjoin() {
 	let mut manager = buffer::BufferManager::new(1024, p.clone());
 	let mut seg = schema::SPSegment {id: 1, manager: &mut manager};
 
+	let mut people = schema::Relation::new(~"Person");
 	let id = schema::Column::new(~"id", schema::Integer, vec!(schema::NotNull));
 	let name = schema::Column::new(~"name", schema::Varchar(128), vec!(schema::NotNull));
-	let mut people = schema::Relation::new(~"Person");
 	people.add_column(id);
 	people.add_column(name);
 	people.insert(&mut seg, vec!(schema::Record::from_int(0), schema::Record::from_str(~"Alice")));
 	people.insert(&mut seg, vec!(schema::Record::from_int(1), schema::Record::from_str(~"Bob")));
+	people.insert(&mut seg, vec!(schema::Record::from_int(2), schema::Record::from_str(~"Eve")));
+	people.insert(&mut seg, vec!(schema::Record::from_int(3), schema::Record::from_str(~"Mallory")));
+	let mut oses = schema::Relation::new(~"OSes");
+	let ident = schema::Column::new(~"ident", schema::Integer, vec!(schema::NotNull));
+	let os = schema::Column::new(~"OS", schema::Varchar(128), vec!(schema::NotNull));
+	oses.add_column(ident);
+	oses.add_column(os);
+	oses.insert(&mut seg, vec!(schema::Record::from_int(0), schema::Record::from_str(~"Plan 9")));
+	oses.insert(&mut seg, vec!(schema::Record::from_int(1), schema::Record::from_str(~"NetBSD")));
+	oses.insert(&mut seg, vec!(schema::Record::from_int(3), schema::Record::from_str(~"GNU/Linux")));
+
 
 	let mut mw = MemWriter::new();
 	let mut ts = TableScan::new(people, &mut seg);
