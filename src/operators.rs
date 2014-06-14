@@ -232,12 +232,22 @@ struct HashJoin<T> {
 
 impl<T: Operatorish<Vec<Register>>> HashJoin<T> {
 	fn new(left: T, right: T, on: (uint, uint)) -> HashJoin<T> {
+		// TODO create hashmap of 'left'
 		HashJoin {
 			left: left,
 			right: right,
 			on: on,
 		}
 	}
+}
+
+impl<T: Operatorish<Vec<Register>>> Iterator<Vec<Register>> for HashJoin<T> {
+	fn next(&mut self) -> Option<Vec<Register>> {
+		None
+	}
+}
+
+impl<T: Operatorish<Vec<Register>>> Operatorish<Vec<Register>> for HashJoin<T> {
 }
 
 #[test]
@@ -305,6 +315,41 @@ fn simple_tablescan() {
 		let mut mw = MemWriter::new();
 		{
 			let mut ts = TableScan::new(relation.clone(), &mut seg);
+			let mut se = Select::new(ts, 0, Varchar(~"Bob"));
+			let mut pr = Print::new(se, &mut mw);
+			for _ in pr {}
+		}
+		println!("Saved: {}", from_utf8(mw.unwrap()).unwrap());
+	}
+
+	assert!(false);
+}
+
+#[test]
+fn simple_hashjoin() {
+	let dir = match TempDir::new("hashjoin") {
+		Some(temp_dir) => temp_dir,
+		None => fail!("creation of temporary directory"),
+	};
+
+	//let p = dir.path();
+	let p = Path::new(".");
+
+	let mut manager = buffer::BufferManager::new(1024, p.clone());
+	let mut seg = schema::SPSegment {id: 1, manager: &mut manager};
+
+	let id = schema::Column::new(~"id", schema::Integer, vec!(schema::NotNull));
+	let name = schema::Column::new(~"name", schema::Varchar(128), vec!(schema::NotNull));
+	let mut people = schema::Relation::new(~"Person");
+	people.add_column(name);
+	people.add_column(age);
+	people.insert(&mut seg, vec!(schema::Record::from_str(~"Alice"), schema::Record::from_int(20)));
+	people.insert(&mut seg, vec!(schema::Record::from_str(~"Bob"), schema::Record::from_int(40)));
+
+	{
+		let mut mw = MemWriter::new();
+		{
+			let mut ts = TableScan::new(people.clone(), &mut seg);
 			let mut se = Select::new(ts, 0, Varchar(~"Bob"));
 			let mut pr = Print::new(se, &mut mw);
 			for _ in pr {}
