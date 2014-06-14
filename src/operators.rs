@@ -341,21 +341,19 @@ fn simple_hashjoin() {
 	let id = schema::Column::new(~"id", schema::Integer, vec!(schema::NotNull));
 	let name = schema::Column::new(~"name", schema::Varchar(128), vec!(schema::NotNull));
 	let mut people = schema::Relation::new(~"Person");
+	people.add_column(id);
 	people.add_column(name);
-	people.add_column(age);
-	people.insert(&mut seg, vec!(schema::Record::from_str(~"Alice"), schema::Record::from_int(20)));
-	people.insert(&mut seg, vec!(schema::Record::from_str(~"Bob"), schema::Record::from_int(40)));
+	people.insert(&mut seg, vec!(schema::Record::from_int(0), schema::Record::from_str(~"Alice")));
+	people.insert(&mut seg, vec!(schema::Record::from_int(1), schema::Record::from_str(~"Bob")));
 
+	let mut mw = MemWriter::new();
+	let mut ts = TableScan::new(people, &mut seg);
+	let mut se = Select::new(ts, 0, Integer(0));
 	{
-		let mut mw = MemWriter::new();
-		{
-			let mut ts = TableScan::new(people.clone(), &mut seg);
-			let mut se = Select::new(ts, 0, Varchar(~"Bob"));
-			let mut pr = Print::new(se, &mut mw);
-			for _ in pr {}
-		}
-		println!("Saved: {}", from_utf8(mw.unwrap()).unwrap());
+		let mut pr = Print::new(se, &mut mw);
+		for _ in pr {}
 	}
+	println!("Saved: {}", from_utf8(mw.unwrap()).unwrap());
 
 	assert!(false);
 }
