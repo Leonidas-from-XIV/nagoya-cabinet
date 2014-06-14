@@ -224,6 +224,22 @@ impl<T: Operatorish<Vec<Register>>> Iterator<Vec<Register>> for Select<T> {
 impl<T: Operatorish<Vec<Register>>> Operatorish<Vec<Register>> for Select<T> {
 }
 
+struct HashJoin<T> {
+	left: T,
+	right: T,
+	on: (uint, uint),
+}
+
+impl<T: Operatorish<Vec<Register>>> HashJoin<T> {
+	fn new(left: T, right: T, on: (uint, uint)) -> HashJoin<T> {
+		HashJoin {
+			left: left,
+			right: right,
+			on: on,
+		}
+	}
+}
+
 #[test]
 fn simple_tablescan() {
 	let dir = match TempDir::new("tablescan") {
