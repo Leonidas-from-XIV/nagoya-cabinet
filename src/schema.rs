@@ -8,7 +8,7 @@ use serialize::ebml::{reader,writer};
 use serialize::{Encodable, Decodable};
 use buffer;
 
-#[deriving(Encodable, Decodable, Clone, Eq, Hash, Show)]
+#[deriving(Encodable, Decodable, Clone, Eq, TotalEq, Hash, Show)]
 pub enum SqlType {
 	/*Char(uint),*/
 	Varchar(uint),
@@ -273,7 +273,7 @@ impl Schema {
 	}
 }
 
-#[deriving(Eq, Hash)]
+#[deriving(Eq, TotalEq, Hash, Clone)]
 pub struct Record {
 	data: Vec<u8>,
 }

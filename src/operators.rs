@@ -1,10 +1,11 @@
 use std::io::{TempDir, MemWriter};
 use std::str::from_utf8;
 use sync::{Arc, Mutex, RWLock};
+use collections::hashmap::HashMap;
 use schema;
 use buffer;
 
-#[deriving(Show, Eq, Hash)]
+#[deriving(Show, Eq, TotalEq, Hash, Clone)]
 struct Register {
 	record: schema::Record,
 	datatype: schema::SqlType,
@@ -227,25 +228,44 @@ impl<T: Operatorish<Vec<Register>>> Operatorish<Vec<Register>> for Select<T> {
 }
 
 struct HashJoin<T> {
-	left: T,
-	right: T,
-	on: (uint, uint),
+	result: Vec<(Vec<Register>, Vec<Register>)>,
 }
 
 impl<T: Operatorish<Vec<Register>>> HashJoin<T> {
-	fn new(left: T, right: T, on: (uint, uint)) -> HashJoin<T> {
-		// TODO create hashmap of 'left'
+	fn new(mut left: T, mut right: T, on: (uint, uint)) -> HashJoin<T> {
+		let mut map = HashMap::new();
+		let (lindex, rindex) = on;
+		for mut tuple in left {
+			let element = tuple.get(lindex).clone();
+			map.insert(element, tuple);
+		}
+
+		debug!("HashJoin map: {}", map);
+		let mut res = Vec::new();
+		for r in right {
+			let element = r.get(rindex).clone();
+			match map.find_copy(&element) {
+				Some(s) => res.push((s, r)),
+				None => continue,
+			};
+		}
+		debug!("HashJon result: {}", res);
+
 		HashJoin {
-			left: left,
-			right: right,
-			on: on,
+			result: res,
 		}
 	}
 }
 
 impl<T: Operatorish<Vec<Register>>> Iterator<Vec<Register>> for HashJoin<T> {
 	fn next(&mut self) -> Option<Vec<Register>> {
-		None
+		match self.result.shift() {
+			None => None,
+			Some((mut s, r)) => {
+				s.push_all_move(r);
+				Some(s)
+			}
+		}
 	}
 }
 
@@ -372,7 +392,9 @@ fn simple_hashjoin() {
 		let mut pr = Print::new(hj, &mut mw);
 		for _ in pr {}
 	}
-	println!("Saved: {}", from_utf8(mw.unwrap()).unwrap());
+	let data = mw.unwrap();
+	let printed = from_utf8(data).unwrap();
+	println!("Saved: {}", printed);
 
 	assert!(false);
 }
