@@ -272,9 +272,8 @@ impl<T: Operatorish<Vec<Register>>> Iterator<Vec<Register>> for HashJoin<T> {
 impl<T: Operatorish<Vec<Register>>> Operatorish<Vec<Register>> for HashJoin<T> {
 }
 
-#[test]
-fn simple_tablescan() {
-	let dir = match TempDir::new("tablescan") {
+fn construct_relation(prefix: ~str) -> (schema::Relation, Arc<Mutex<schema::SPSegment>>) {
+	let dir = match TempDir::new(prefix) {
 		Some(temp_dir) => temp_dir,
 		None => fail!("creation of temporary directory"),
 	};
@@ -293,14 +292,28 @@ fn simple_tablescan() {
 	relation.insert(&mut seg, vec!(schema::Record::from_str(~"Alice"), schema::Record::from_int(20)));
 	relation.insert(&mut seg, vec!(schema::Record::from_str(~"Bob"), schema::Record::from_int(40)));
 	let segmut = Arc::new(Mutex::new(seg));
+	(relation, segmut)
+}
 
-	{
-		let mut ts = TableScan::new(relation.clone(), segmut.clone());
-		for tuple in ts {
-			println!("Got entry {}", tuple);
-		}
+#[test]
+fn simple_tablescan() {
+	let (relation, segmut) = construct_relation(~"tablescan");
+
+	let mut ts = TableScan::new(relation, segmut);
+	let mut result = Vec::new();
+	let expected = vec!((~"Alice", 20), (~"Bob", 40));
+	for tuple in ts {
+		println!("Got entry {}", tuple);
+		let n = tuple.get(0).get_str().to_owned();
+		let i = tuple.get(1).get_int();
+		result.push((n, i));
 	}
+	assert_eq!(expected, result);
+}
 
+#[test]
+fn simple_print() {
+	let (relation, segmut) = construct_relation(~"print");
 	{
 		let mut mw = MemWriter::new();
 		{
@@ -358,7 +371,7 @@ fn simple_hashjoin() {
 	//let p = dir.path();
 	let p = Path::new(".");
 
-	let mut manager = buffer::BufferManager::new(1024, p.clone());
+	let manager = buffer::BufferManager::new(1024, p.clone());
 	let mut seg = schema::SPSegment::new(1, Arc::new(RWLock::new(manager)));
 
 	/* first relation */
@@ -385,9 +398,9 @@ fn simple_hashjoin() {
 
 	let mut mw = MemWriter::new();
 	let segmut = Arc::new(Mutex::new(seg));
-	let mut ts_left = TableScan::new(oses, segmut.clone());
-	let mut ts_right = TableScan::new(people, segmut.clone());
-	let mut hj = HashJoin::new(ts_left, ts_right, (0,0));
+	let ts_left = TableScan::new(oses, segmut.clone());
+	let ts_right = TableScan::new(people, segmut.clone());
+	let hj = HashJoin::new(ts_left, ts_right, (0,0));
 	{
 		let mut pr = Print::new(hj, &mut mw);
 		for _ in pr {}
