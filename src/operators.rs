@@ -73,7 +73,7 @@ impl Iterator<Vec<Register>> for TableScan {
 		if (self.current as u64) < self.relation.inserted {
 			let mut seg = self.segment.lock();
 			let tup = self.relation.get(seg.deref_mut(), self.current);
-			let mut res = tup.move_iter().map(|(v, t)| Register::new(v, t)).
+			let res = tup.move_iter().map(|(v, t)| Register::new(v, t)).
 				collect::<Vec<Register>>();
 			debug!("TS: {}", res);
 			self.current += 1;
@@ -235,7 +235,7 @@ impl<T: Operatorish<Vec<Register>>> HashJoin<T> {
 	fn new(mut left: T, mut right: T, on: (uint, uint)) -> HashJoin<T> {
 		let mut map = HashMap::new();
 		let (lindex, rindex) = on;
-		for mut tuple in left {
+		for tuple in left {
 			let element = tuple.get(lindex).clone();
 			map.insert(element, tuple);
 		}
@@ -281,7 +281,7 @@ fn construct_relation(prefix: ~str) -> (schema::Relation, Arc<Mutex<schema::SPSe
 	//let p = dir.path();
 	let p = Path::new(".");
 
-	let mut manager = buffer::BufferManager::new(1024, p.clone());
+	let manager = buffer::BufferManager::new(1024, p.clone());
 	let mut seg = schema::SPSegment::new(1, Arc::new(RWLock::new(manager)));
 
 	let name = schema::Column::new(~"name", schema::Varchar(128), vec!(schema::NotNull));
@@ -316,7 +316,7 @@ fn simple_print() {
 	let (relation, segmut) = construct_relation(~"print");
 	let mut mw = MemWriter::new();
 	{
-		let mut ts = TableScan::new(relation.clone(), segmut.clone());
+		let ts = TableScan::new(relation.clone(), segmut.clone());
 		let mut pr = Print::new(ts, &mut mw);
 		// force write by iterating, strange API
 		for _ in pr {}
@@ -334,9 +334,9 @@ fn simple_project() {
 	let (relation, segmut) = construct_relation(~"project");
 	let mut mw = MemWriter::new();
 	{
-		let mut ts = TableScan::new(relation, segmut);
-		let mut pr = Project::new(ts, vec!(0));
-		let mut pr = Print::new(pr, &mut mw);
+		let ts = TableScan::new(relation, segmut);
+		let pro = Project::new(ts, vec!(0));
+		let mut pr = Print::new(pro, &mut mw);
 		for _ in pr {}
 	}
 	let data = mw.unwrap();
@@ -352,8 +352,8 @@ fn simple_select() {
 	let (relation, segmut) = construct_relation(~"select");
 	let mut mw = MemWriter::new();
 	{
-		let mut ts = TableScan::new(relation.clone(), segmut.clone());
-		let mut se = Select::new(ts, 1, Integer(20));
+		let ts = TableScan::new(relation.clone(), segmut.clone());
+		let se = Select::new(ts, 1, Integer(20));
 		let mut pr = Print::new(se, &mut mw);
 		for _ in pr {}
 	}
@@ -366,8 +366,8 @@ fn simple_select() {
 
 	let mut mw = MemWriter::new();
 	{
-		let mut ts = TableScan::new(relation.clone(), segmut.clone());
-		let mut se = Select::new(ts, 0, Varchar(~"Bob"));
+		let ts = TableScan::new(relation.clone(), segmut.clone());
+		let se = Select::new(ts, 0, Varchar(~"Bob"));
 		let mut pr = Print::new(se, &mut mw);
 		for _ in pr {}
 	}
