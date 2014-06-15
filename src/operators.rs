@@ -332,17 +332,24 @@ fn simple_print() {
 #[test]
 fn simple_project() {
 	let (relation, segmut) = construct_relation(~"project");
+	let mut mw = MemWriter::new();
 	{
-		let mut mw = MemWriter::new();
-		{
-			let mut ts = TableScan::new(relation.clone(), segmut.clone());
-			let mut pr = Project::new(ts, vec!(0));
-			let mut pr = Print::new(pr, &mut mw);
-			for _ in pr {}
-		}
-		println!("Saved: {}", from_utf8(mw.unwrap()).unwrap());
+		let mut ts = TableScan::new(relation, segmut);
+		let mut pr = Project::new(ts, vec!(0));
+		let mut pr = Print::new(pr, &mut mw);
+		for _ in pr {}
 	}
+	let data = mw.unwrap();
+	let printed = from_utf8(data).unwrap().to_owned();
+	let expected = ~"Alice, \nBob, \n";
 
+	println!("Printed:\n{}", printed);
+	assert_eq!(expected, printed);
+}
+
+#[test]
+fn simple_select() {
+	let (relation, segmut) = construct_relation(~"select");
 	{
 		let mut mw = MemWriter::new();
 		{
