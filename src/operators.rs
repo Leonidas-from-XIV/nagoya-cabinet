@@ -392,9 +392,9 @@ fn simple_hashjoin() {
 		let mut pr = Print::new(hj, &mut mw);
 		for _ in pr {}
 	}
+	let expected = ~"0, Plan 9, 0, Alice, \n1, NetBSD, 1, Bob, \n3, GNU/Linux, 3, Mallory, \n";
 	let data = mw.unwrap();
-	let printed = from_utf8(data).unwrap();
-	println!("Saved: {}", printed);
+	let printed = from_utf8(data).unwrap().to_owned();
 
-	assert!(false);
+	assert_eq!(expected, printed);
 }
