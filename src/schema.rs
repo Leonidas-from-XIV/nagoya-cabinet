@@ -317,9 +317,9 @@ impl Record {
 	}
 }
 
-pub struct SPSegment<'a> {
+pub struct SPSegment {
 	id: u64,
-	manager: &'a mut buffer::BufferManager,
+	manager: Arc<RWLock<buffer::BufferManager>>,
 }
 
 struct SlottedPageHeader {
@@ -616,18 +616,26 @@ fn join_segment(segment: u64, page: u64) -> u64{
 	(segment << buffer::PAGE_BITS) | page
 }
 
-impl<'a> SPSegment<'a> {
+impl SPSegment {
+	pub fn new(id: u64, manager: Arc<RWLock<buffer::BufferManager>>) -> SPSegment {
+		SPSegment {
+			id: id,
+			manager: manager,
+		}
+	}
+
 	pub fn insert(&mut self, r: &Record) -> Option<TID> {
 		for i in range(0, 1<<buffer::PAGE_BITS) {
 			info!("Testing page {} for insertion", i);
-			let pagelock = match self.manager.fix_page(join_segment(self.id, i as u64)) {
+			let mut manager = self.manager.write();
+			let pagelock = match manager.fix_page(join_segment(self.id, i as u64)) {
 				Some(p) => p,
 				None => fail!("Failed aquiring page {}", i),
 			};
 			let mut sp = SlottedPage::new(pagelock.clone());
 			let (inserted, slot) = sp.try_insert(r);
 			info!("try_insert: {}", inserted);
-			self.manager.unfix_page(pagelock, inserted);
+			manager.unfix_page(pagelock, inserted);
 			if inserted {
 				return Some(TID::new(i as u64, slot));
 			}
@@ -648,10 +656,11 @@ impl<'a> SPSegment<'a> {
 	 * fix a page, create slotted page, call the closure with that slotted
 	 * page and unfix that page
 	 */
-	fn with_slotted_page<T>(&mut self, tid: TID, f: |SlottedPage| -> (bool, T)) -> T {
+	fn with_slotted_page<T>(&self, tid: TID, f: |SlottedPage| -> (bool, T)) -> T {
 		let page_id = tid.page_id();
 		let full_page_id = join_segment(self.id, page_id);
-		let pagelock = match self.manager.fix_page(full_page_id) {
+		let mut manager = self.manager.write();
+		let pagelock = match manager.fix_page(full_page_id) {
 			Some(p) => p,
 			None => fail!("Failed looking up page {}", page_id),
 		};
@@ -659,11 +668,11 @@ impl<'a> SPSegment<'a> {
 			let sp = SlottedPage::new(pagelock.clone());
 			f(sp)
 		};
-		self.manager.unfix_page(pagelock, wrote);
+		manager.unfix_page(pagelock, wrote);
 		result
 	}
 
-	pub fn lookup(&mut self, tid: TID) -> Record {
+	pub fn lookup(&self, tid: TID) -> Record {
 		let slot_id = tid.slot_id();
 		match self.with_slotted_page(tid, |sp| sp.lookup(slot_id)) {
 			Direct(record) => record,
@@ -726,7 +735,7 @@ fn slotted_page_create() {
 	//let p = Path::new(".");
 
 	let mut manager = buffer::BufferManager::new(1024, p.clone());
-	let mut seg = SPSegment {id: 1, manager: &mut manager};
+	let mut seg = SPSegment::new(1, Arc::new(RWLock::new(manager)));
 
 	let rec = Record::new(vec!(42));
 	let tid = seg.insert(&rec).unwrap();

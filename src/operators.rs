@@ -1,5 +1,6 @@
 use std::io::{TempDir, MemWriter};
 use std::str::from_utf8;
+use sync::{Arc, Mutex, RWLock};
 use schema;
 use buffer;
 
@@ -47,14 +48,14 @@ trait Operatorish<T>: Iterator<T> {
 	//fn close(&self);
 }
 
-struct TableScan<'a, 'b> {
+struct TableScan {
 	relation: schema::Relation,
-	segment: &'a mut schema::SPSegment<'b>,
+	segment: Arc<Mutex<schema::SPSegment>>,
 	current: uint,
 }
 
-impl<'a, 'b> TableScan<'a, 'b> {
-	fn new(rel: schema::Relation, seg: &'a mut schema::SPSegment<'b>) -> TableScan<'a, 'b> {
+impl TableScan {
+	fn new(rel: schema::Relation, seg: Arc<Mutex<schema::SPSegment>>) -> TableScan {
 		TableScan {
 			relation: rel,
 			segment: seg,
@@ -63,13 +64,14 @@ impl<'a, 'b> TableScan<'a, 'b> {
 	}
 }
 
-impl<'a, 'b> Operatorish<Vec<Register>> for TableScan<'a, 'b> {
+impl Operatorish<Vec<Register>> for TableScan {
 }
 
-impl<'a, 'b> Iterator<Vec<Register>> for TableScan<'a, 'b> {
+impl Iterator<Vec<Register>> for TableScan {
 	fn next(&mut self) -> Option<Vec<Register>> {
 		if (self.current as u64) < self.relation.inserted {
-			let tup = self.relation.get(self.segment, self.current);
+			let mut seg = self.segment.lock();
+			let tup = self.relation.get(seg.deref_mut(), self.current);
 			let mut res = tup.move_iter().map(|(v, t)| Register::new(v, t)).
 				collect::<Vec<Register>>();
 			debug!("TS: {}", res);
@@ -261,7 +263,7 @@ fn simple_tablescan() {
 	let p = Path::new(".");
 
 	let mut manager = buffer::BufferManager::new(1024, p.clone());
-	let mut seg = schema::SPSegment {id: 1, manager: &mut manager};
+	let mut seg = schema::SPSegment::new(1, Arc::new(RWLock::new(manager)));
 
 	let name = schema::Column::new(~"name", schema::Varchar(128), vec!(schema::NotNull));
 	let age = schema::Column::new(~"age", schema::Integer, vec!(schema::NotNull));
@@ -270,9 +272,10 @@ fn simple_tablescan() {
 	relation.add_column(age);
 	relation.insert(&mut seg, vec!(schema::Record::from_str(~"Alice"), schema::Record::from_int(20)));
 	relation.insert(&mut seg, vec!(schema::Record::from_str(~"Bob"), schema::Record::from_int(40)));
+	let segmut = Arc::new(Mutex::new(seg));
 
 	{
-		let mut ts = TableScan::new(relation.clone(), &mut seg);
+		let mut ts = TableScan::new(relation.clone(), segmut.clone());
 		for tuple in ts {
 			println!("Got entry {}", tuple);
 		}
@@ -281,7 +284,7 @@ fn simple_tablescan() {
 	{
 		let mut mw = MemWriter::new();
 		{
-			let mut ts = TableScan::new(relation.clone(), &mut seg);
+			let mut ts = TableScan::new(relation.clone(), segmut.clone());
 			let mut pr = Print::new(ts, &mut mw);
 			// force write by iterating, strange API
 			for _ in pr {}
@@ -292,7 +295,7 @@ fn simple_tablescan() {
 	{
 		let mut mw = MemWriter::new();
 		{
-			let mut ts = TableScan::new(relation.clone(), &mut seg);
+			let mut ts = TableScan::new(relation.clone(), segmut.clone());
 			let mut pr = Project::new(ts, vec!(0));
 			let mut pr = Print::new(pr, &mut mw);
 			for _ in pr {}
@@ -303,7 +306,7 @@ fn simple_tablescan() {
 	{
 		let mut mw = MemWriter::new();
 		{
-			let mut ts = TableScan::new(relation.clone(), &mut seg);
+			let mut ts = TableScan::new(relation.clone(), segmut.clone());
 			let mut se = Select::new(ts, 1, Integer(20));
 			let mut pr = Print::new(se, &mut mw);
 			for _ in pr {}
@@ -314,7 +317,7 @@ fn simple_tablescan() {
 	{
 		let mut mw = MemWriter::new();
 		{
-			let mut ts = TableScan::new(relation.clone(), &mut seg);
+			let mut ts = TableScan::new(relation.clone(), segmut.clone());
 			let mut se = Select::new(ts, 0, Varchar(~"Bob"));
 			let mut pr = Print::new(se, &mut mw);
 			for _ in pr {}
@@ -336,8 +339,9 @@ fn simple_hashjoin() {
 	let p = Path::new(".");
 
 	let mut manager = buffer::BufferManager::new(1024, p.clone());
-	let mut seg = schema::SPSegment {id: 1, manager: &mut manager};
+	let mut seg = schema::SPSegment::new(1, Arc::new(RWLock::new(manager)));
 
+	/* first relation */
 	let mut people = schema::Relation::new(~"Person");
 	let id = schema::Column::new(~"id", schema::Integer, vec!(schema::NotNull));
 	let name = schema::Column::new(~"name", schema::Varchar(128), vec!(schema::NotNull));
@@ -347,6 +351,8 @@ fn simple_hashjoin() {
 	people.insert(&mut seg, vec!(schema::Record::from_int(1), schema::Record::from_str(~"Bob")));
 	people.insert(&mut seg, vec!(schema::Record::from_int(2), schema::Record::from_str(~"Eve")));
 	people.insert(&mut seg, vec!(schema::Record::from_int(3), schema::Record::from_str(~"Mallory")));
+
+	/* second relation */
 	let mut oses = schema::Relation::new(~"OSes");
 	let ident = schema::Column::new(~"ident", schema::Integer, vec!(schema::NotNull));
 	let os = schema::Column::new(~"OS", schema::Varchar(128), vec!(schema::NotNull));
@@ -358,10 +364,12 @@ fn simple_hashjoin() {
 
 
 	let mut mw = MemWriter::new();
-	let mut ts = TableScan::new(people, &mut seg);
-	let mut se = Select::new(ts, 0, Integer(0));
+	let segmut = Arc::new(Mutex::new(seg));
+	let mut ts_left = TableScan::new(oses, segmut.clone());
+	let mut ts_right = TableScan::new(people, segmut.clone());
+	let mut hj = HashJoin::new(ts_left, ts_right, (0,0));
 	{
-		let mut pr = Print::new(se, &mut mw);
+		let mut pr = Print::new(hj, &mut mw);
 		for _ in pr {}
 	}
 	println!("Saved: {}", from_utf8(mw.unwrap()).unwrap());
