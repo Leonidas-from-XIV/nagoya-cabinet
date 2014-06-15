@@ -109,9 +109,15 @@ impl<'a, T: Operatorish<Vec<Register>>, V: Writer> Iterator<Vec<Register>> for P
 						schema::Integer => self.output.write(
 							format!("{}", item.get_int()).as_bytes())
 					};
-					self.output.write(", ".as_bytes());
+					match self.output.write(", ".as_bytes()) {
+						Ok(_) => (),
+						Err(e) => fail!("Print operator separator writing, due {}", e),
+					};
 				}
-				self.output.write("\n".as_bytes());
+				match self.output.write("\n".as_bytes()) {
+					Ok(_) => (),
+					Err(e) => fail!("Print operator separator writing, due {}", e),
+				};
 				Some(reg)
 			},
 			None => None,
@@ -194,7 +200,7 @@ impl<T: Operatorish<Vec<Register>>> Iterator<Vec<Register>> for Select<T> {
 			match self.value {
 				// comparing to a string
 				Varchar(ref v) => {
-					println!("Comparing {} with {}",
+					info!("Comparing {} with {}",
 						reg.get(self.index).get_str(),
 						v);
 					// getting the register value as string
@@ -272,16 +278,10 @@ impl<T: Operatorish<Vec<Register>>> Iterator<Vec<Register>> for HashJoin<T> {
 impl<T: Operatorish<Vec<Register>>> Operatorish<Vec<Register>> for HashJoin<T> {
 }
 
-fn construct_relation(prefix: ~str) -> (schema::Relation, Arc<Mutex<schema::SPSegment>>) {
-	let dir = match TempDir::new(prefix) {
-		Some(temp_dir) => temp_dir,
-		None => fail!("creation of temporary directory"),
-	};
+fn construct_relation(p: Path) -> (schema::Relation, Arc<Mutex<schema::SPSegment>>) {
+	//let p = Path::new(".");
 
-	//let p = dir.path();
-	let p = Path::new(".");
-
-	let manager = buffer::BufferManager::new(1024, p.clone());
+	let manager = buffer::BufferManager::new(1024, p);
 	let mut seg = schema::SPSegment::new(1, Arc::new(RWLock::new(manager)));
 
 	let name = schema::Column::new(~"name", schema::Varchar(128), vec!(schema::NotNull));
@@ -297,7 +297,13 @@ fn construct_relation(prefix: ~str) -> (schema::Relation, Arc<Mutex<schema::SPSe
 
 #[test]
 fn simple_tablescan() {
-	let (relation, segmut) = construct_relation(~"tablescan");
+	let dir = match TempDir::new("tablescan") {
+		Some(temp_dir) => temp_dir,
+		None => fail!("creation of temporary directory"),
+	};
+
+	let p = dir.path();
+	let (relation, segmut) = construct_relation(p.clone());
 
 	let mut ts = TableScan::new(relation, segmut);
 	let mut result = Vec::new();
@@ -313,7 +319,13 @@ fn simple_tablescan() {
 
 #[test]
 fn simple_print() {
-	let (relation, segmut) = construct_relation(~"print");
+	let dir = match TempDir::new("print") {
+		Some(temp_dir) => temp_dir,
+		None => fail!("creation of temporary directory"),
+	};
+
+	let p = dir.path();
+	let (relation, segmut) = construct_relation(p.clone());
 	let mut mw = MemWriter::new();
 	{
 		let ts = TableScan::new(relation.clone(), segmut.clone());
@@ -331,7 +343,13 @@ fn simple_print() {
 
 #[test]
 fn simple_project() {
-	let (relation, segmut) = construct_relation(~"project");
+	let dir = match TempDir::new("project") {
+		Some(temp_dir) => temp_dir,
+		None => fail!("creation of temporary directory"),
+	};
+
+	let p = dir.path();
+	let (relation, segmut) = construct_relation(p.clone());
 	let mut mw = MemWriter::new();
 	{
 		let ts = TableScan::new(relation, segmut);
@@ -349,7 +367,13 @@ fn simple_project() {
 
 #[test]
 fn simple_select() {
-	let (relation, segmut) = construct_relation(~"select");
+	let dir = match TempDir::new("select") {
+		Some(temp_dir) => temp_dir,
+		None => fail!("creation of temporary directory"),
+	};
+
+	let p = dir.path();
+	let (relation, segmut) = construct_relation(p.clone());
 	let mut mw = MemWriter::new();
 	{
 		let ts = TableScan::new(relation.clone(), segmut.clone());
@@ -386,8 +410,8 @@ fn simple_hashjoin() {
 		None => fail!("creation of temporary directory"),
 	};
 
-	//let p = dir.path();
-	let p = Path::new(".");
+	let p = dir.path();
+	//let p = Path::new(".");
 
 	let manager = buffer::BufferManager::new(1024, p.clone());
 	let mut seg = schema::SPSegment::new(1, Arc::new(RWLock::new(manager)));
