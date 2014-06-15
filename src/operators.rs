@@ -350,29 +350,33 @@ fn simple_project() {
 #[test]
 fn simple_select() {
 	let (relation, segmut) = construct_relation(~"select");
+	let mut mw = MemWriter::new();
 	{
-		let mut mw = MemWriter::new();
-		{
-			let mut ts = TableScan::new(relation.clone(), segmut.clone());
-			let mut se = Select::new(ts, 1, Integer(20));
-			let mut pr = Print::new(se, &mut mw);
-			for _ in pr {}
-		}
-		println!("Saved: {}", from_utf8(mw.unwrap()).unwrap());
+		let mut ts = TableScan::new(relation.clone(), segmut.clone());
+		let mut se = Select::new(ts, 1, Integer(20));
+		let mut pr = Print::new(se, &mut mw);
+		for _ in pr {}
 	}
+	let data = mw.unwrap();
+	let printed = from_utf8(data).unwrap().to_owned();
+	let expected = ~"Alice, 20, \n";
 
+	println!("Printed:\n{}", printed);
+	assert_eq!(expected, printed);
+
+	let mut mw = MemWriter::new();
 	{
-		let mut mw = MemWriter::new();
-		{
-			let mut ts = TableScan::new(relation.clone(), segmut.clone());
-			let mut se = Select::new(ts, 0, Varchar(~"Bob"));
-			let mut pr = Print::new(se, &mut mw);
-			for _ in pr {}
-		}
-		println!("Saved: {}", from_utf8(mw.unwrap()).unwrap());
+		let mut ts = TableScan::new(relation.clone(), segmut.clone());
+		let mut se = Select::new(ts, 0, Varchar(~"Bob"));
+		let mut pr = Print::new(se, &mut mw);
+		for _ in pr {}
 	}
+	let data = mw.unwrap();
+	let printed = from_utf8(data).unwrap().to_owned();
+	let expected = ~"Bob, 40, \n";
 
-	assert!(false);
+	println!("Printed:\n{}", printed);
+	assert_eq!(expected, printed);
 }
 
 #[test]
