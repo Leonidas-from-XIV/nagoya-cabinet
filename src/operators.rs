@@ -314,17 +314,24 @@ fn simple_tablescan() {
 #[test]
 fn simple_print() {
 	let (relation, segmut) = construct_relation(~"print");
+	let mut mw = MemWriter::new();
 	{
-		let mut mw = MemWriter::new();
-		{
-			let mut ts = TableScan::new(relation.clone(), segmut.clone());
-			let mut pr = Print::new(ts, &mut mw);
-			// force write by iterating, strange API
-			for _ in pr {}
-		}
-		println!("Saved: {}", from_utf8(mw.unwrap()).unwrap());
+		let mut ts = TableScan::new(relation.clone(), segmut.clone());
+		let mut pr = Print::new(ts, &mut mw);
+		// force write by iterating, strange API
+		for _ in pr {}
 	}
+	let data = mw.unwrap();
+	let printed = from_utf8(data).unwrap().to_owned();
+	let expected = ~"Alice, 20, \nBob, 40, \n";
 
+	println!("Printed:\n{}", printed);
+	assert_eq!(expected, printed);
+}
+
+#[test]
+fn simple_project() {
+	let (relation, segmut) = construct_relation(~"project");
 	{
 		let mut mw = MemWriter::new();
 		{
